@@ -1,0 +1,4 @@
+/out
+/pretrained_models
+**/*.pyc
+**/*.DS_STORE
