@@ -16,7 +16,7 @@ from diffusers.models import AutoencoderKL
 from download import find_model
 from models import DiT_models
 import argparse
-
+import os
 
 def main(args):
     # Setup PyTorch:
@@ -66,8 +66,12 @@ def main(args):
     samples = vae.decode(samples / 0.18215).sample
 
     # Save and display images:
-    save_image(samples, "sample.png", nrow=1, normalize=True, value_range=(-1, 1))
-
+    # Inside the main function, before save_image call
+    path = os.getcwd()
+    output_dir = os.path.join(path, "out")
+    
+    # Now you can safely save the image
+    save_image(samples, os.path.join(output_dir, "sample.png"), nrow=1, normalize=True, value_range=(-1, 1))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
