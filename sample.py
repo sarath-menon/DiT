@@ -62,6 +62,15 @@ def main(args):
         elif ".adaLN_modulation.1.bias" in key:
             new_key = key.replace(".adaLN_modulation.1.bias", ".adaLN_modulation.linear.bias")
             key_mapping[key] = new_key
+        elif "y_embedder" in key:
+            new_key = key.replace("y_embedder", "label_embedder")
+            key_mapping[key] = new_key
+        elif "x_embedder" in key:
+            new_key = key.replace("x_embedder", "patch_embedder")
+            key_mapping[key] = new_key
+        elif "t_embedder" in key:
+            new_key = key.replace("t_embedder", "timestep_embedder")
+            key_mapping[key] = new_key
 
     for name, param in state_dict.items():
         # Map the state_dict name to the model's state_dict name if necessary
