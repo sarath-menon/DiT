@@ -13,11 +13,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 import math
-# from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
-from timm.models.vision_transformer import  Attention, Mlp
-from custom_impl import PatchEmbed
+from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
 
-# to scale and shift the input
+
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
@@ -106,41 +104,21 @@ class DiTBlock(nn.Module):
     """
     def __init__(self, hidden_size, num_heads, mlp_ratio=4.0, **block_kwargs):
         super().__init__()
-
-        # Layernorm  
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-
-        # Attentiom
         self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **block_kwargs)
-
-        # MLP
+        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         mlp_hidden_dim = int(hidden_size * mlp_ratio)
         approx_gelu = lambda: nn.GELU(approximate="tanh")
         self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(hidden_size, 6 * hidden_size, bias=True)
+        )
 
-        self.adaLN_modulation = AdaLNModulation(hidden_size, 6)
-
-    # Attention + MLP with residual connection
     def forward(self, x, c):
-        
-        # modulate -> scale and shift layer norm output 
-        # gate_msa -> scale the attention output
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6 , dim=1)
-        
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
         x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
         x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
-        return x
-
-class AdaLNModulation(nn.Module):
-    def __init__(self, hidden_size, out_scale):
-        super().__init__()
-        self.silu = nn.SiLU()
-        self.linear = nn.Linear(hidden_size, out_scale * hidden_size, bias=True)
-
-    def forward(self, x):
-        x = self.silu(x)
-        x = self.linear(x)
         return x
 
 
@@ -152,7 +130,10 @@ class FinalLayer(nn.Module):
         super().__init__()
         self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
-        self.adaLN_modulation = AdaLNModulation(hidden_size, 2)
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(hidden_size, 2 * hidden_size, bias=True)
+        )
 
     def forward(self, x, c):
         shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
@@ -160,19 +141,20 @@ class FinalLayer(nn.Module):
         x = self.linear(x)
         return x
 
+
 class DiT(nn.Module):
     """
     Diffusion model with a Transformer backbone.
     """
     def __init__(
         self,
-        input_size=32, # For 256x256x3 imag, the latent z is 32x32x4
+        input_size=32,
         patch_size=2,
-        in_channels=4, # no. of channels n latent
+        in_channels=4,
         hidden_size=1152,
-        depth=28, # no of DiT blocks
-        num_heads=16, # no. of attention heads
-        mlp_ratio=4.0, 
+        depth=28,
+        num_heads=16,
+        mlp_ratio=4.0,
         class_dropout_prob=0.1,
         num_classes=1000,
         learn_sigma=True,
@@ -184,25 +166,16 @@ class DiT(nn.Module):
         self.patch_size = patch_size
         self.num_heads = num_heads
 
-        # Patchifier
-        # self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
-        self.x_embedder = PatchEmbed( input_size, input_size, patch_size, in_channels, embed_dim=hidden_size)
-
-        # timestep embedder
+        self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
         self.t_embedder = TimestepEmbedder(hidden_size)
-
-        # label embedded
         self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
         num_patches = self.x_embedder.num_patches
-
-        # Position embeddding (fixed sin-cos embedding)
+        # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, hidden_size), requires_grad=False)
 
-        # Create (depth) number of DiT blocks
         self.blocks = nn.ModuleList([
             DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)
         ])
-
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
         self.initialize_weights()
 
@@ -233,12 +206,12 @@ class DiT(nn.Module):
 
         # Zero-out adaLN modulation layers in DiT blocks:
         for block in self.blocks:
-            nn.init.constant_(block.adaLN_modulation.linear.weight, 0)
-            nn.init.constant_(block.adaLN_modulation.linear.bias, 0)
+            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
 
         # Zero-out output layers:
-        nn.init.constant_(self.final_layer.adaLN_modulation.linear.weight, 0)
-        nn.init.constant_(self.final_layer.adaLN_modulation.linear.bias, 0)
+        nn.init.constant_(self.final_layer.adaLN_modulation[-1].weight, 0)
+        nn.init.constant_(self.final_layer.adaLN_modulation[-1].bias, 0)
         nn.init.constant_(self.final_layer.linear.weight, 0)
         nn.init.constant_(self.final_layer.linear.bias, 0)
 
@@ -248,7 +221,7 @@ class DiT(nn.Module):
         imgs: (N, H, W, C)
         """
         c = self.out_channels
-        p = self.x_embedder.patch_size
+        p = self.x_embedder.patch_size[0]
         h = w = int(x.shape[1] ** 0.5)
         assert h * w == x.shape[1]
 
