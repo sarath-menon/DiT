@@ -41,7 +41,30 @@ def main(args):
     # Auto-download a pre-trained model or load a custom DiT checkpoint from train.py:
     ckpt_path = args.ckpt or f"DiT-XL-2-{args.image_size}x{args.image_size}.pt"
     state_dict = find_model(ckpt_path)
-    model.load_state_dict(state_dict)
+
+    # model.load_state_dict(state_dict)
+
+     # Load state dict layer by layer:
+    own_state = model.state_dict()
+    
+    # Define a mapping from old keys to new keys
+    key_mapping = {
+        "final_layer.adaLN_modulation.1.weight": "final_layer.adaLN_modulation.linear.weight",
+        "final_layer.adaLN_modulation.1.bias": "final_layer.adaLN_modulation.linear.bias"
+    }
+
+    for name, param in state_dict.items():
+        # Map the state_dict name to the model's state_dict name if necessary
+        mapped_name = key_mapping.get(name, name)
+        if mapped_name in own_state:
+            try:
+                own_state[mapped_name].copy_(param)
+                print(f"Layer {mapped_name} loaded successfully")
+            except Exception as e:
+                print(f"Failed to load {mapped_name}. Reason: {e}")
+        else:
+            print(f"{mapped_name} not found in the model's state_dict")
+
     model.eval()  # important!
     diffusion = create_diffusion(str(args.num_sampling_steps))
     vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-{args.vae}").to(device)
