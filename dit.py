@@ -9,7 +9,7 @@ import numpy as np
 
 @dataclass
 class DiTConfig:
-    img_size: int = 32 # size of image latent
+    input_size: int = 32 # size of image latent
     patch_size: int = 4
     reg_tokens: int = 0
     n_layers: int = 28
@@ -126,7 +126,7 @@ class PatchEmbed(nn.Module):
 class AcausalSelfAttention(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        assert cfg.img_size % cfg.n_heads == 0, "img_size must be divisible by n_heads"
+        assert cfg.input_size % cfg.n_heads == 0, "input_size must be divisible by n_heads"
 
         self.n_heads, self.n_embed = cfg.n_heads, cfg.n_embed
         self.head_size = self.n_embed // self.n_heads
@@ -252,14 +252,14 @@ class DiT(nn.Module):
     def __init__(self, cfg):
         super(DiT, self).__init__()
 
-        image_height, image_width = pair(cfg.img_size)
+        image_height, image_width = pair(cfg.input_size)
         patch_height, patch_width = pair(cfg.patch_size)
         self.device = cfg.device
 
         assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
 
         # patchifier
-        self.patch_embed = PatchEmbed(cfg.img_size, cfg.img_size, cfg.patch_size, cfg.in_chans, cfg.n_embed)
+        self.patch_embed = PatchEmbed(cfg.input_size, cfg.input_size, cfg.patch_size, cfg.in_chans, cfg.n_embed)
 
         # timestep embedder
         self.timestep_embedder = TimestepEmbedder(cfg.n_embed)
@@ -272,7 +272,8 @@ class DiT(nn.Module):
 
         # position embedding
         self.pos_embed = nn.Parameter(torch.randn(1, num_patches, cfg.n_embed) * .02)
-        self.pos_embed = self.get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(num_patches ** 0.5))
+        pos_embed_np = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(num_patches ** 0.5))
+        self.pos_embed.data.copy_(torch.from_numpy(pos_embed_np).float().unsqueeze(0))
 
         # Sequential blocks for computation 
         self.blocks = nn.Sequential(
@@ -330,3 +331,16 @@ class DiT(nn.Module):
         #     loss = None
 
         # return log_probs, loss
+
+    # Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance 
+    # (https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb)
+    def forward_with_cfg(self, x, t, y, cfg_scale):
+        half = x[: len(x) // 2]
+        combined = torch.cat([half, half], dim=0)
+        model_out = self.forward(combined, t, y)
+
+        eps, rest = model_out[:, :3], model_out[:, 3:]
+        cond_eps, uncond_eps = torch.split(eps, len(eps) // 2, dim=0)
+        half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
+        eps = torch.cat([half_eps, half_eps], dim=0)
+        return torch.cat([eps, rest], dim=1)
