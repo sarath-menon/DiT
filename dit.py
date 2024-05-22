@@ -10,20 +10,25 @@ import numpy as np
 @dataclass
 class DiTConfig:
     input_size: int = 32 # size of image latent
-    patch_size: int = 4
+    patch_size: int = 2
     reg_tokens: int = 0
     n_layers: int = 28
     n_heads: int = 16
     n_embed: int = 1152
-    in_chans: int = 3
+    in_chans: int = 4 # no. channels of latent
     dropout: float = 0.0
     device: str = 'cpu'
     mlp_ratio: int = 4
     num_classes: int = 1000
     bias: bool = True
+    class_dropout_prob: float = 0.1
 
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
+
+
+def modulate(x, shift, scale):
+    return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
 class TimestepEmbedder(nn.Module):
     """
@@ -170,17 +175,13 @@ class Block(nn.Module):
 
         self.adaLN_modulation = AdaLNModulation(n_embed, 6)
 
-    # to scale and shift the input
-    def modulate(self, x, shift, scale):
-        return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
-
-    def forward(self, x):
+    def forward(self, x, c):
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6 , dim=1)
         
         # modulate -> scale and shift layer norm output 
         # gate_msa -> scale the attention output
-        x = x + gate_msa.unsqueeze(1) * self.attn(self.modulate(self.norm1(x), shift_msa, scale_msa))
-        x = x + gate_mlp.unsqueeze(1) * self.mlp(self.modulate(self.norm2(x), shift_mlp, scale_mlp))
+        x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
+        x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
         return x
 
 class FeedForward(nn.Module):
@@ -248,6 +249,24 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     return emb
 
 
+class FinalLayer(nn.Module):
+    """
+    The final layer of DiT.
+    """
+    def __init__(self, hidden_size, patch_size, out_channels):
+        super().__init__()
+        self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
+        self.adaLN_modulation = AdaLNModulation(hidden_size, 2)
+
+    def forward(self, x, c):
+        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
+        x = modulate(self.norm_final(x), shift, scale)
+        x = self.linear(x)
+        return x
+
+
+
 class DiT(nn.Module):
     def __init__(self, cfg):
         super(DiT, self).__init__()
@@ -255,17 +274,19 @@ class DiT(nn.Module):
         image_height, image_width = pair(cfg.input_size)
         patch_height, patch_width = pair(cfg.patch_size)
         self.device = cfg.device
+        self.out_channels = cfg.in_chans * 2
+        self.patch_size = cfg.patch_size
 
         assert image_height % patch_height == 0 and image_width % patch_width == 0, 'Image dimensions must be divisible by the patch size.'
 
         # patchifier
-        self.patch_embed = PatchEmbed(cfg.input_size, cfg.input_size, cfg.patch_size, cfg.in_chans, cfg.n_embed)
+        self.patch_embedder = PatchEmbed(cfg.input_size, cfg.input_size, cfg.patch_size, cfg.in_chans, cfg.n_embed)
 
         # timestep embedder
         self.timestep_embedder = TimestepEmbedder(cfg.n_embed)
 
         # label embedded
-        self.label_embedder = LabelEmbedder(cfg.num_classes, cfg.n_embed, cfg.dropout)
+        self.label_embedder = LabelEmbedder(cfg.num_classes, cfg.n_embed, cfg.class_dropout_prob)
 
         # self.reg_token = nn.Parameter(torch.zeros(1, cfg.reg_tokens, cfg.n_embed)) 
         num_patches = (image_height // patch_height) * (image_width // patch_width)
@@ -275,16 +296,22 @@ class DiT(nn.Module):
         pos_embed_np = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(num_patches ** 0.5))
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed_np).float().unsqueeze(0))
 
-        # Sequential blocks for computation 
-        self.blocks = nn.Sequential(
-            *[Block(cfg) for _ in range(cfg.n_layers)]
-        )
+        # # Sequential blocks for computation 
+        # self.blocks = nn.Sequential(
+        #     *[Block(cfg) for _ in range(cfg.n_layers)]
+        # )
 
-        self.fc_norm = nn.LayerNorm(cfg.n_embed)
-        self.adaLN_modulation = AdaLNModulation(cfg.n_embed, 6)
+        self.blocks = nn.ModuleList([
+             *[Block(cfg) for _ in range(cfg.n_layers)]
+        ])
 
-        # Linear layer to map from token embedding to log_probs
-        self.head = nn.Linear(cfg.n_embed, cfg.num_classes, bias=True)
+        self.final_layer = FinalLayer(cfg.n_embed, cfg.patch_size, self.out_channels)
+
+        # self.fc_norm = nn.LayerNorm(cfg.n_embed)
+        # self.adaLN_modulation = AdaLNModulation(cfg.n_embed, 6)
+
+        # # Linear layer to map from token embedding to log_probs
+        # self.head = nn.Linear(cfg.n_embed, cfg.num_classes, bias=True)
 
     def unpatchify(self, x):
         """
@@ -292,7 +319,7 @@ class DiT(nn.Module):
         imgs: (N, H, W, C)
         """
         c = self.out_channels
-        p = self.x_embedder.patch_size
+        p = self.patch_size
         h = w = int(x.shape[1] ** 0.5)
         assert h * w == x.shape[1]
 
@@ -301,8 +328,6 @@ class DiT(nn.Module):
         imgs = x.view(x.shape[0], c, h * p, w * p)  # Combine patch dimensions with height and width
         return imgs
 
-
-
     def forward(self, x, t, y, targets=None):
 
         # get timestep and label embeddings
@@ -310,15 +335,14 @@ class DiT(nn.Module):
         label_embed = self.label_embedder(y, False) # False-> not in training mode
         c = timestep_embed + label_embed
 
-        x = self.patch_embed(x) + self.pos_embed
-        x = self.blocks(x)
+        x = self.patch_embedder(x) + self.pos_embed
+        # x = self.blocks(x,c)
 
-        shift, scale = self.adaLN_modulation(x).chunk(2, dim=1)
-        x = self.modulate(x, shift, scale)
+        for block in self.blocks:
+            x = block(x, c)
 
         # final linear layer
-        x = self.fc_norm(x)
-        log_probs = self.head(x)
+        x = self.final_layer(x, c)
 
         x = self.unpatchify(x)   
 
