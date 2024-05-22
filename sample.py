@@ -48,10 +48,14 @@ def main(args):
     own_state = model.state_dict()
     
     # Define a mapping from old keys to new keys
-    key_mapping = {
-        "final_layer.adaLN_modulation.1.weight": "final_layer.adaLN_modulation.linear.weight",
-        "final_layer.adaLN_modulation.1.bias": "final_layer.adaLN_modulation.linear.bias"
-    }
+    key_mapping = {}
+    for key in state_dict.keys():
+        if ".adaLN_modulation.1.weight" in key:
+            new_key = key.replace(".adaLN_modulation.1.weight", ".adaLN_modulation.linear.weight")
+            key_mapping[key] = new_key
+        elif ".adaLN_modulation.1.bias" in key:
+            new_key = key.replace(".adaLN_modulation.1.bias", ".adaLN_modulation.linear.bias")
+            key_mapping[key] = new_key
 
     for name, param in state_dict.items():
         # Map the state_dict name to the model's state_dict name if necessary
@@ -59,7 +63,7 @@ def main(args):
         if mapped_name in own_state:
             try:
                 own_state[mapped_name].copy_(param)
-                print(f"Layer {mapped_name} loaded successfully")
+                # print(f"Layer {mapped_name} loaded successfully")
             except Exception as e:
                 print(f"Failed to load {mapped_name}. Reason: {e}")
         else:
