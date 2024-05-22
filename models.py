@@ -119,15 +119,14 @@ class DiTBlock(nn.Module):
         approx_gelu = lambda: nn.GELU(approximate="tanh")
         self.mlp = Mlp(in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu, drop=0)
 
-        self.adaLN_out = 6
-        self.adaLN_modulation = AdaLNModulation(hidden_size, self.adaLN_out)
+        self.adaLN_modulation = AdaLNModulation(hidden_size, 6)
 
     # Attention + MLP with residual connection
     def forward(self, x, c):
         
         # modulate -> scale and shift layer norm output 
         # gate_msa -> scale the attention output
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(self.adaLN_out , dim=1)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6 , dim=1)
         
         x = x + gate_msa.unsqueeze(1) * self.attn(modulate(self.norm1(x), shift_msa, scale_msa))
         x = x + gate_mlp.unsqueeze(1) * self.mlp(modulate(self.norm2(x), shift_mlp, scale_mlp))
@@ -153,12 +152,10 @@ class FinalLayer(nn.Module):
         super().__init__()
         self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
         self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
-
-        self.adaLN_out =2
-        self.adaLN_modulation = AdaLNModulation(hidden_size, out_scale=2)
+        self.adaLN_modulation = AdaLNModulation(hidden_size, 2)
 
     def forward(self, x, c):
-        shift, scale = self.adaLN_modulation(c).chunk(self.adaLN_out, dim=1)
+        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
         x = modulate(self.norm_final(x), shift, scale)
         x = self.linear(x)
         return x
