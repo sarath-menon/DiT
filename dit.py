@@ -208,18 +208,18 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=
     pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
     """
     assert embed_dim % 2 == 0
-    grid_h = np.arange(grid_size, dtype=np.float32)
-    grid_w = np.arange(grid_size, dtype=np.float32)
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0).reshape([2, 1, grid_size, grid_size])
+    grid_h = torch.arange(grid_size, dtype=torch.float32)
+    grid_w = torch.arange(grid_size, dtype=torch.float32)
+    grid = torch.meshgrid(grid_w, grid_h, indexing="xy")  # here w goes first
+    grid = torch.stack(grid, dim=0).reshape([2, 1, grid_size, grid_size])
 
     # use half of dimensions to encode grid_h and grid_w
     emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
     emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
-    pos_embed = np.concatenate([emb_h, emb_w], axis=1)  # (H*W, D)
+    pos_embed = torch.cat([emb_h, emb_w], dim=1)  # (H*W, D)
 
     if cls_token and extra_tokens > 0:
-        pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
+        pos_embed = torch.cat([torch.zeros([extra_tokens, embed_dim]), pos_embed], dim=0)
     return pos_embed
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
@@ -229,19 +229,18 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     out: (M, D)
     """
     assert embed_dim % 2 == 0
-    omega = np.arange(embed_dim // 2, dtype=np.float64)
+    omega = torch.arange(embed_dim // 2, dtype=torch.float64)
     omega /= embed_dim / 2.
     omega = 1. / 10000**omega  # (D/2,)
 
     pos = pos.reshape(-1, 1)  # (M, 1)
     out = pos * omega  # (M, D/2), outer product
 
-    emb_sin = np.sin(out) # (M, D/2)
-    emb_cos = np.cos(out) # (M, D/2)
+    emb_sin = torch.sin(out) # (M, D/2)
+    emb_cos = torch.cos(out) # (M, D/2)
 
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
+    emb = torch.cat([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
-
 
 class FinalLayer(nn.Module):
     """
@@ -258,8 +257,6 @@ class FinalLayer(nn.Module):
         x = modulate(self.norm_final(x), shift, scale)
         x = self.linear(x)
         return x
-
-
 
 class DiT(nn.Module):
     def __init__(self, cfg):
@@ -288,24 +285,12 @@ class DiT(nn.Module):
         # position embedding
         self.pos_embed = nn.Parameter(torch.randn(1, num_patches, cfg.n_embed) * .02)
         pos_embed_np = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(num_patches ** 0.5))
-        self.pos_embed.data.copy_(torch.from_numpy(pos_embed_np).float().unsqueeze(0))
-
-        # # Sequential blocks for computation 
-        # self.blocks = nn.Sequential(
-        #     *[Block(cfg) for _ in range(cfg.n_layers)]
-        # )
 
         self.blocks = nn.ModuleList([
              *[Block(cfg) for _ in range(cfg.n_layers)]
         ])
 
         self.final_layer = FinalLayer(cfg.n_embed, cfg.patch_size, self.out_channels)
-
-        # self.fc_norm = nn.LayerNorm(cfg.n_embed)
-        # self.adaLN_modulation = AdaLNModulation(cfg.n_embed, 6)
-
-        # # Linear layer to map from token embedding to log_probs
-        # self.head = nn.Linear(cfg.n_embed, cfg.num_classes, bias=True)
 
     def unpatchify(self, x):
         """
@@ -337,18 +322,9 @@ class DiT(nn.Module):
 
         # final linear layer
         x = self.final_layer(x, c)
-
         x = self.unpatchify(x)   
 
         return x
-
-        # if targets is not None:
-        #     targets = targets.to(self.device)
-        #     loss = F.cross_entropy(log_probs, targets)
-        # else:
-        #     loss = None
-
-        # return log_probs, loss
 
     # Forward pass of DiT, but also batches the unconditional forward pass for classifier-free guidance 
     # (https://github.com/openai/glide-text2im/blob/main/notebooks/text2im.ipynb)
