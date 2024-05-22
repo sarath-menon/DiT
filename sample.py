@@ -15,6 +15,7 @@ from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
 from download import find_model
 from models import DiT_models
+from dit import DiT, DiTConfig
 import argparse
 import os
 
@@ -29,14 +30,19 @@ def main(args):
         assert args.image_size in [256, 512]
         assert args.num_classes == 1000
 
+    latent_size = args.image_size // 8
+
     print("Loading model")
 
-    # Load model:
-    latent_size = args.image_size // 8
-    model = DiT_models[args.model](
-        input_size=latent_size,
-        num_classes=args.num_classes
-    ).to(device)
+    # # Load model:
+    #
+    # model = DiT_models[args.model](
+    #     input_size=latent_size,
+    #     num_classes=args.num_classes
+    # ).to(device)
+
+    dit_config = DiTConfig()
+    model = DiT(dit_config)
 
     # Auto-download a pre-trained model or load a custom DiT checkpoint from train.py:
     ckpt_path = args.ckpt or f"DiT-XL-2-{args.image_size}x{args.image_size}.pt"
