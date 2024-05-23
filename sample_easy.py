@@ -36,7 +36,7 @@ vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-mse").to(device)
 # model_kwargs = dict(y=y, cfg_scale=cfg_scale)
 
 # # Sample image:
-# samples = diffusion.p_sample_loop(
+# samples = diffusion.p_sample_loop_loop(
 #     model.forward_with_cfg, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
 # )
 
@@ -69,7 +69,7 @@ def linear_beta_schedule(diffusion_timesteps):
 
 import numpy as np
 
-def p_sample(model_output, x, t, T):
+def p_sample_loop(model_output, x, t, T):
 
     # safety checks
     B, C = x.shape[:2]
@@ -130,12 +130,14 @@ def inference(x,y):
     # indices = list(range(1, n_sampling_steps + 1))[::-1]
     indices = list(range(spaced_diffusion.num_timesteps))[::-1]
 
+    map_ts = th.tensor([  0, 250, 500, 749, 999])
+
     for i in indices:
-        t = th.tensor([i] * x.shape[0], device="cpu") 
+        t = th.tensor([map_ts[i]] * x.shape[0], device="cpu") 
 
         model_output = model.forward_with_cfg(x, t, y, cfg_scale)
 
-        x = p_sample(model_output, x, i, spaced_diffusion.num_timesteps) 
+        x = p_sample_loop(model_output, x,  i, spaced_diffusion.num_timesteps) 
     return x
 
 
