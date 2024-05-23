@@ -311,8 +311,8 @@ class GaussianDiffusion:
             assert model_output.shape == (B, C * 2, *x.shape[2:])
 
             model_output, model_var_values = th.split(model_output, C, dim=1)
-            # print("model_output: ", model_output[0,0,0,:10])
-            # print("model_var_values: ", model_var_values[0,0,0,:10])
+            print("model_output: ", model_output[0,0,0,:2])
+            # print("model_var_values: ", model_var_values[0,0,0,:2])
 
             min_log = _extract_into_tensor(self.posterior_log_variance_clipped, t, x.shape)
             max_log = _extract_into_tensor(np.log(self.betas), t, x.shape)
@@ -321,7 +321,7 @@ class GaussianDiffusion:
             model_log_variance = frac * max_log + (1 - frac) * min_log
             model_variance = th.exp(model_log_variance)
 
-            # print("model_variance: ", model_variance[0,0,0,:10])
+            # print("model_variance: ", model_variance[0,0,0,:2])
             # print("min_log: ", min_log.shape)
             # print("max_log: ", max_log.shape)
             # print("min_log: ", min_log[0,0,0,0])
@@ -369,13 +369,13 @@ class GaussianDiffusion:
 
     def _predict_xstart_from_eps(self, x_t, t, eps):
         assert x_t.shape == eps.shape
-        # print("x_t: ", x_t[0,0,0,:10])
-        # print("eps: ", eps[0,0,0,:10])
+        # print("x_t: ", x_t[0,0,0,:2])
+        # print("eps: ", eps[0,0,0,:2])
 
         a = _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape)
         b = _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape)
-        # print("a:", a[0,0,0,:10])
-        # print("b:", b[0,0,0,:10])
+        # print("a:", a[0,0,0,:2])
+        # print("b:", b[0,0,0,:2])
 
         return (
             _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
@@ -459,9 +459,9 @@ class GaussianDiffusion:
             out["mean"] = self.condition_mean(cond_fn, out, x, t, model_kwargs=model_kwargs)
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
         
-        # print("mean: ", out["mean"][0,0,0,:10])
-        print("x: ", x[0,0,0,:10])
-        print("x_prev: ", sample[0,0,0,:10])
+        # print("mean: ", out["mean"][0,0,0,:2])
+        print("x: ", x[0,0,0,:2])
+        print("x_prev: ", sample[0,0,0,:2])
 
         # exit()
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}

@@ -81,8 +81,9 @@ def p_sample_loop(model_output, x, t, T, betas):
     # assert t.shape == (B,)
     assert model_output.shape == (B, C * 2, *x.shape[2:])
     model_output, model_var_values = th.split(model_output, C, dim=1)
-    # print("model_output: ", model_output[0,0,0,:10])
-    # print("model_var_values: ", model_var_values[0,0,0,:10])
+    print("model_output: ", model_output[0,0,0,:2])
+    # print("model_var_values: ", model_var_values[0,0,0,:2])
+
 
     # betas = linear_beta_schedule(T)
     alphas = 1. - betas
@@ -94,33 +95,22 @@ def p_sample_loop(model_output, x, t, T, betas):
     a = th.sqrt(1. / alpha_prod)
     b = th.sqrt(1. / alpha_prod - 1)
    
-    a = th.full_like(x, a[-1])
-    b = th.full_like(x, b[-1])
-
-    # print("a:", a[0,0,0,:10])
-    # print("b:", b[0,0,0,:10])
-
     # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
     if len(posterior_var) > 1:
         posterior_var = th.log(th.cat([posterior_var[1].unsqueeze(0), posterior_var[1:]]))
     else:
         posterior_var = th.tensor([])
-
-    # extract values for given timestep
-    # alpha_prod  = alphas[t]
-    # alpha_prod_prev= alphas[t-1]
     
-    # mean prediction
-    # noise_pred = model(x, t, model_kwargs)     
+    # mean prediction  
     noise_pred = model_output
     # mean_pred =  (x - (betas[t] * noise_pred / th.sqrt(1. - alpha_prod))) * 1 / th.sqrt(alphas[t])
 
-    x_start_pred = (a* x) - (b* noise_pred)
-    # print(x_start_pred[0,0,0,:10])
+    x_start_pred = (a[-1]* x) - (b[-1]* noise_pred)
+    # print(x_start_pred[0,0,0,:2])
     # exit()
 
-    # print("x: ", x[0,0,0,:10])
-    # print("noise_pred: ", noise_pred[0,0,0,:10])
+    # print("x: ", x[0,0,0,:2])
+    # print("noise_pred: ", noise_pred[0,0,0,:2])
 
     # print("betas shape:", betas.shape)
     coeff1 = th.sqrt(alpha_prod_prev) * betas
@@ -130,9 +120,6 @@ def p_sample_loop(model_output, x, t, T, betas):
 
     # print("coeff1:", coeff1)
     # print("coeff2:", coeff2)
-
-    # coeff1 = th.full_like(x, coeff1[-1])
-    # coeff2 = th.full_like(x, coeff2[-1])
 
     mean_pred = coeff1[-1] * x_start_pred + coeff2[-1] * x
     
@@ -152,19 +139,16 @@ def p_sample_loop(model_output, x, t, T, betas):
     var_pred = th.exp(model_log_variance)
 
     noise = th.randn_like(x)
-
-    # nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(x.shape) - 1))))
-
     nonzero_mask = 1.
     if t==0:
         nonzero_mask = 0.
 
     x_prev = mean_pred + nonzero_mask * th.exp(0.5 * model_log_variance) * noise
 
-    print("x: ", x[0,0,0,:10])
-    print("x_prev: ", x_prev[0,0,0,:10])
-    #print("model_variance: ", var_pred[0,0,0,:10])
-    #print("mean_pred: ", mean_pred[0,0,0,:10])
+    print("x: ", x[0,0,0,:2])
+    print("x_prev: ", x_prev[0,0,0,:2])
+    #print("model_variance: ", var_pred[0,0,0,:2])
+    #print("mean_pred: ", mean_pred[0,0,0,:2])
     # print("min_log: ", min_log[0,0,0,0])
     # print("max_log: ", max_log[0,0,0,0])
     # print("betas: ", betas)
