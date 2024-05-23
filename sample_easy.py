@@ -8,10 +8,16 @@ from dit import DiT, DiTConfig, load_pretrained_model
 from diffusers.models import AutoencoderKL
 import os
 import numpy as np
+from diffusion.respace import  space_timesteps
+from diffusion.respace import SpacedDiffusion, space_timesteps
+import diffusion.gaussian_diffusion as gd
+
+
 
 th.manual_seed(1)
 device = "cuda" if th.cuda.is_available() else "cpu"
 
+diffusion_steps = 1000
 n_sampling_steps = 5
 cfg_scale = 4.0
 class_labels = [11] # Labels to condition the model with (feel free to change):
@@ -33,6 +39,18 @@ vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-mse").to(device)
 # samples = diffusion.p_sample_loop(
 #     model.forward_with_cfg, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
 # )
+
+def linear_beta_schedule_np(num_diffusion_timesteps):
+    scale = 1000  / num_diffusion_timesteps 
+    beta_start = scale * 0.0001
+    beta_end = scale * 0.02
+    return np.linspace(beta_start, beta_end, num_diffusion_timesteps) 
+
+n_sampling_steps = 5
+diffusion_steps=1000
+betas = linear_beta_schedule_np(diffusion_steps)
+
+
 
 posterior_var = []
 
@@ -62,7 +80,7 @@ def p_sample(model_output, x, t, T):
 
     model_output, model_var_values = th.split(model_output, C, dim=1)
 
-    betas = linear_beta_schedule(T+1)
+    betas = linear_beta_schedule(T)
     alphas = 1 - betas
     
     alpha_prod = th.cumprod(alphas, 0)
@@ -98,16 +116,26 @@ def p_sample(model_output, x, t, T):
     return x_prev 
 
 def inference(x,y):
-    n_sampling_steps = 5
+
+    betas = linear_beta_schedule_np(diffusion_steps)
+
+    spaced_diffusion = SpacedDiffusion(
+    use_timesteps=space_timesteps(diffusion_steps,[n_sampling_steps]),
+    betas=betas,
+    model_mean_type=gd.ModelMeanType.EPSILON,
+    model_var_type=gd.ModelVarType.LEARNED_RANGE,
+    loss_type = gd.LossType.MSE)
+
     # time indices in reverse
-    indices = list(range(1, n_sampling_steps + 1))[::-1]
+    # indices = list(range(1, n_sampling_steps + 1))[::-1]
+    indices = list(range(spaced_diffusion.num_timesteps))[::-1]
 
     for i in indices:
         t = th.tensor([i] * x.shape[0], device="cpu") 
 
         model_output = model.forward_with_cfg(x, t, y, cfg_scale)
 
-        x = p_sample(model_output, x, i, n_sampling_steps) 
+        x = p_sample(model_output, x, i, spaced_diffusion.num_timesteps) 
     return x
 
 
@@ -121,6 +149,8 @@ y = th.tensor(class_labels, device=device)
 z = th.cat([z, z], 0)
 y_null = th.tensor([1000] * n, device=device)
 y = th.cat([y, y_null], 0)
+
+# print("z: ", z[0,0,:10])
 
 samples = inference(z,y)
 
