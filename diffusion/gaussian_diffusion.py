@@ -358,8 +358,6 @@ class GaussianDiffusion:
             )
         model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x, t=t)
 
-        print("mean_pred: ", model_mean[0,0,0,:10])
-        #print("x_start_pred: ", pred_xstart[0,0,0,:10])
         assert model_mean.shape == model_log_variance.shape == pred_xstart.shape == x.shape
         return {
             "mean": model_mean,
@@ -462,9 +460,10 @@ class GaussianDiffusion:
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
         
         # print("mean: ", out["mean"][0,0,0,:10])
-        print("sample: ", sample[0,0,0,:10])
+        print("x: ", x[0,0,0,:10])
+        print("x_prev: ", sample[0,0,0,:10])
 
-        exit()
+        # exit()
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
     def p_sample_loop(

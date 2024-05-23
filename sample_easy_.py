@@ -122,7 +122,7 @@ def p_sample_loop(model_output, x, t, T, betas):
     # print("x: ", x[0,0,0,:10])
     # print("noise_pred: ", noise_pred[0,0,0,:10])
 
-    print("betas shape:", betas.shape)
+    # print("betas shape:", betas.shape)
     coeff1 = th.sqrt(alpha_prod_prev) * betas
     
     coeff1 = th.sqrt(alpha_prod_prev) * betas  / (1 - alpha_prod)
@@ -161,6 +161,7 @@ def p_sample_loop(model_output, x, t, T, betas):
 
     x_prev = mean_pred + nonzero_mask * th.exp(0.5 * model_log_variance) * noise
 
+    print("x: ", x[0,0,0,:10])
     print("x_prev: ", x_prev[0,0,0,:10])
     #print("model_variance: ", var_pred[0,0,0,:10])
     #print("mean_pred: ", mean_pred[0,0,0,:10])
@@ -168,12 +169,12 @@ def p_sample_loop(model_output, x, t, T, betas):
     # print("max_log: ", max_log[0,0,0,0])
     # print("betas: ", betas)
 
-    exit()
+    # exit()
 
     # x_prev = mean_pred + var_pred
     return x_prev 
 
-def inference(x,y):
+def inference(z,y):
 
     betas = linear_beta_schedule_np(diffusion_steps)
 
@@ -189,6 +190,8 @@ def inference(x,y):
     indices = list(range(spaced_diffusion.num_timesteps))[::-1]
 
     map_ts = th.tensor([  0, 250, 500, 749, 999])
+
+    x = z
 
     for i in indices:
         t = th.tensor([map_ts[i]] * x.shape[0], device="cpu") 
