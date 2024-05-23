@@ -41,7 +41,7 @@ vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-mse").to(device)
 # )
 
 def linear_beta_schedule_np(num_diffusion_timesteps):
-    scale = 1000  / num_diffusion_timesteps 
+    scale = 1000.0  / num_diffusion_timesteps 
     beta_start = scale * 0.0001
     beta_end = scale * 0.02
     return np.linspace(beta_start, beta_end, num_diffusion_timesteps) 
@@ -69,18 +69,21 @@ def linear_beta_schedule(diffusion_timesteps):
 
 import numpy as np
 
-def p_sample_loop(model_output, x, t, T):
+@th.no_grad()
+def p_sample_loop(model_output, x, t, T, betas):
+
+    betas = th.from_numpy(betas).float().to(device)
 
     # safety checks
     B, C = x.shape[:2]
-    print("B, C: ", B, C)
+    # print("B, C: ", B, C)
 
     # assert t.shape == (B,)
     assert model_output.shape == (B, C * 2, *x.shape[2:])
 
     model_output, model_var_values = th.split(model_output, C, dim=1)
 
-    betas = linear_beta_schedule(T)
+    # betas = linear_beta_schedule(T)
     alphas = 1 - betas
     
     alpha_prod = th.cumprod(alphas, 0)
@@ -112,6 +115,14 @@ def p_sample_loop(model_output, x, t, T):
     model_log_variance = frac * max_log + (1 - frac) * min_log
     var_pred = th.exp(model_log_variance)
 
+    # print("model_variance: ", var_pred.shape)
+    print("min_log: ", min_log.shape)
+    print("max_log: ", max_log.shape)
+    # print("model_output: ", model_output.shape)
+    # print("model_var_values: ", model_var_values)
+
+    print("betas: ", betas)
+
     x_prev = mean_pred + var_pred
     return x_prev 
 
@@ -137,7 +148,7 @@ def inference(x,y):
 
         model_output = model.forward_with_cfg(x, t, y, cfg_scale)
 
-        x = p_sample_loop(model_output, x,  i, spaced_diffusion.num_timesteps) 
+        x = p_sample_loop(model_output, x,  i, spaced_diffusion.num_timesteps, spaced_diffusion.betas) 
     return x
 
 
