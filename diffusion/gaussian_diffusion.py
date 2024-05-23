@@ -188,10 +188,20 @@ class GaussianDiffusion:
         self.posterior_variance = (
             betas * (1.0 - self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
         )
+
+        # print("betas shape: ", betas.shape)
+        # print("betas: ", betas)
+        # print("posterior_variance shape: ", self.posterior_variance.shape)
+
         # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
-        self.posterior_log_variance_clipped = np.log(
-            np.append(self.posterior_variance[1], self.posterior_variance[1:])
-        ) if len(self.posterior_variance) > 1 else np.array([])
+        if len(self.posterior_variance) > 1:
+            self.posterior_log_variance_clipped = np.log(np.append(self.posterior_variance[1], self.posterior_variance[1:]))
+        else:
+            self.posterior_log_variance_clipped = np.array([])
+
+        # print("betas shape:", betas.shape)
+        # print("alphas_cumprod_prev shape:", self.alphas_cumprod_prev.shape)
+        # print("alphas_cumprod shape:", self.alphas_cumprod.shape)
 
         self.posterior_mean_coef1 = (
             betas * np.sqrt(self.alphas_cumprod_prev) / (1.0 - self.alphas_cumprod)
@@ -235,6 +245,15 @@ class GaussianDiffusion:
             q(x_{t-1} | x_t, x_0)
         """
         assert x_start.shape == x_t.shape
+        # print("coef1: ", _extract_into_tensor(self.posterior_mean_coef1, t, x_t.shape).shape)
+        # print("coef2: ", _extract_into_tensor(self.posterior_mean_coef2, t, x_t.shape).shape)
+
+        print("coef1:", self.posterior_mean_coef1)
+        print("coef2:", self.posterior_mean_coef2)
+        
+        print("x_start: ", x_start.shape)
+        # print("x_t: ", x_t.shape)
+
         posterior_mean = (
             _extract_into_tensor(self.posterior_mean_coef1, t, x_t.shape) * x_start
             + _extract_into_tensor(self.posterior_mean_coef2, t, x_t.shape) * x_t
@@ -276,7 +295,13 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
+        # print("x: ", x.shape)
+        #print("t_p_mean_var: ", t)
+        # print("B, C: ", B, C)
+        # print("model_kwargs: ", model_kwargs)
+
         model_output = model(x, t, **model_kwargs)
+
         if isinstance(model_output, tuple):
             model_output, extra = model_output
         else:
@@ -284,13 +309,24 @@ class GaussianDiffusion:
 
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
             assert model_output.shape == (B, C * 2, *x.shape[2:])
+
             model_output, model_var_values = th.split(model_output, C, dim=1)
+            # print("model_output: ", model_output[0,0,0,:10])
+            # print("model_var_values: ", model_var_values[0,0,0,:10])
+
             min_log = _extract_into_tensor(self.posterior_log_variance_clipped, t, x.shape)
             max_log = _extract_into_tensor(np.log(self.betas), t, x.shape)
             # The model_var_values is [-1, 1] for [min_var, max_var].
             frac = (model_var_values + 1) / 2
             model_log_variance = frac * max_log + (1 - frac) * min_log
             model_variance = th.exp(model_log_variance)
+
+            # print("model_variance: ", model_variance[0,0,0,:10])
+            # print("min_log: ", min_log.shape)
+            # print("max_log: ", max_log.shape)
+            # print("min_log: ", min_log[0,0,0,0])
+            # print("max_log: ", max_log[0,0,0,0])
+
         else:
             model_variance, model_log_variance = {
                 # for fixedlarge, we set the initial (log-)variance like so
@@ -322,6 +358,10 @@ class GaussianDiffusion:
             )
         model_mean, _, _ = self.q_posterior_mean_variance(x_start=pred_xstart, x_t=x, t=t)
 
+        print("mean_pred: ", model_mean[0,0,0,:10])
+        #print("x_start_pred: ", pred_xstart[0,0,0,:10])
+        exit()
+
         assert model_mean.shape == model_log_variance.shape == pred_xstart.shape == x.shape
         return {
             "mean": model_mean,
@@ -333,6 +373,14 @@ class GaussianDiffusion:
 
     def _predict_xstart_from_eps(self, x_t, t, eps):
         assert x_t.shape == eps.shape
+        # print("x_t: ", x_t[0,0,0,:10])
+        # print("eps: ", eps[0,0,0,:10])
+
+        a = _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape)
+        b = _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape)
+        # print("a:", a[0,0,0,:10])
+        # print("b:", b[0,0,0,:10])
+
         return (
             _extract_into_tensor(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t
             - _extract_into_tensor(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * eps
@@ -497,6 +545,10 @@ class GaussianDiffusion:
 
         for i in indices:
             t = th.tensor([i] * shape[0], device=device)
+            # print("shape: ", shape)
+            # print("t: ", t)
+            # print("i: ", i)
+
             with th.no_grad():
                 out = self.p_sample(
                     model,
