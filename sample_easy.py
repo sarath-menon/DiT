@@ -18,7 +18,7 @@ th.manual_seed(1)
 device = "cuda" if th.cuda.is_available() else "cpu"
 
 diffusion_steps = 1000
-n_sampling_steps = 5
+n_sampling_steps = 10
 cfg_scale = 4.0
 class_labels = [11] # Labels to condition the model with (feel free to change):
 
@@ -85,11 +85,20 @@ def p_sample_loop(model_output, x, t, T, betas):
     # print("model_var_values: ", model_var_values[0,0,0,:10])
 
     # betas = linear_beta_schedule(T)
-    alphas = 1 - betas
+    alphas = 1. - betas
     
     alpha_prod = th.cumprod(alphas, 0)
     alpha_prod_prev = th.cat([th.tensor([1.0]), alpha_prod[:-1]])
     posterior_var =  betas * (1. - alpha_prod_prev) / (1. - alpha_prod)
+
+    a = th.sqrt(1. / alpha_prod)
+    b = th.sqrt(1. / alpha_prod - 1)
+   
+    a = th.full_like(x, a[-1])
+    b = th.full_like(x, b[-1])
+
+    # print("a:", a[0,0,0,:10])
+    # print("b:", b[0,0,0,:10])
 
     # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
     if len(posterior_var) > 1:
@@ -104,10 +113,17 @@ def p_sample_loop(model_output, x, t, T, betas):
     # mean prediction
     # noise_pred = model(x, t, model_kwargs)     
     noise_pred = model_output
-    mean_pred =  (x - (betas[t] * noise_pred / th.sqrt(1. - alpha_prod))) * 1 / th.sqrt(alphas[t])
+    # mean_pred =  (x - (betas[t] * noise_pred / th.sqrt(1. - alpha_prod))) * 1 / th.sqrt(alphas[t])
 
-    # mean_pred = th.sqrt(alpha_prod_prev) * betas[t] * x_start / (1 - alpha_prod) * x
-    # mean_pred += th.sqrt(alpha_prod) * (1 - alpha_prod_prev) / (1 - alpha_prod) * x
+    x_start_pred = (a* x) - (b* noise_pred)
+    # print(x_start_pred[0,0,0,:10])
+    # exit()
+
+    # print("x: ", x[0,0,0,:10])
+    # print("noise_pred: ", noise_pred[0,0,0,:10])
+    
+    mean_pred = th.sqrt(alpha_prod_prev) * betas[t] * x_start_pred / (1 - alpha_prod) * x
+    mean_pred += th.sqrt(alpha_prod) * (1 - alpha_prod_prev) / (1 - alpha_prod) * x
 
     # var prediction
     min_log = posterior_var[t]
@@ -137,8 +153,7 @@ def p_sample_loop(model_output, x, t, T, betas):
     # print("max_log: ", max_log[0,0,0,0])
     # print("betas: ", betas)
 
-    # exit()
-
+    exit()
     # x_prev = mean_pred + var_pred
     return x_prev 
 
