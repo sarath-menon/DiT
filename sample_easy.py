@@ -26,16 +26,7 @@ model.eval()  # important!
 # diffusion = create_diffusion(str(n_sampling_steps))
 vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-mse").to(device)
 
-# Convert image class to noise latent:
-latent_size = dit_cfg.input_size
-n = len(class_labels)
-z = th.randn(n, 4, latent_size, latent_size, device=device)
-y = th.tensor(class_labels, device=device)
 
-# Setup classifier-free guidance:
-z = th.cat([z, z], 0)
-y_null = th.tensor([1000] * n, device=device)
-y = th.cat([y, y_null], 0)
 # model_kwargs = dict(y=y, cfg_scale=cfg_scale)
 
 # # Sample image:
@@ -106,27 +97,32 @@ def p_sample(model_output, x, t, T):
     x_prev = mean_pred + var_pred
     return x_prev 
 
-def inference(x):
-    z = th.randn(2,4,32,32)
+def inference(x,y):
     n_sampling_steps = 5
-
-    # start with pure noise
-    x = th.randn_like(z)  # Added batch dimension
-    print("x: ", x.shape)
-
     # time indices in reverse
     indices = list(range(1, n_sampling_steps + 1))[::-1]
 
     for i in indices:
         t = th.tensor([i] * x.shape[0], device="cpu") 
 
-        # model_output = model.forward_with_cfg(x, t, y, cfg_scale)
-        model_output = th.randn(2,8,32,32)
+        model_output = model.forward_with_cfg(x, t, y, cfg_scale)
 
         x = p_sample(model_output, x, i, n_sampling_steps) 
     return x
 
-samples = inference(z)
+
+ # Convert image class to noise latent:
+latent_size = dit_cfg.input_size
+n = len(class_labels)
+z = th.randn(n, 4, latent_size, latent_size, device=device)
+y = th.tensor(class_labels, device=device)
+
+# Setup classifier-free guidance:
+z = th.cat([z, z], 0)
+y_null = th.tensor([1000] * n, device=device)
+y = th.cat([y, y_null], 0)
+
+samples = inference(z,y)
 
 # convert image latent to image
 samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
