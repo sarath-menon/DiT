@@ -248,10 +248,10 @@ class GaussianDiffusion:
         # print("coef1: ", _extract_into_tensor(self.posterior_mean_coef1, t, x_t.shape).shape)
         # print("coef2: ", _extract_into_tensor(self.posterior_mean_coef2, t, x_t.shape).shape)
 
-        print("coef1:", self.posterior_mean_coef1)
-        print("coef2:", self.posterior_mean_coef2)
+        # print("coef1:", self.posterior_mean_coef1)
+        # print("coef2:", self.posterior_mean_coef2)
         
-        print("x_start: ", x_start.shape)
+        # print("x_start: ", x_start.shape)
         # print("x_t: ", x_t.shape)
 
         posterior_mean = (
@@ -360,8 +360,6 @@ class GaussianDiffusion:
 
         print("mean_pred: ", model_mean[0,0,0,:10])
         #print("x_start_pred: ", pred_xstart[0,0,0,:10])
-        exit()
-
         assert model_mean.shape == model_log_variance.shape == pred_xstart.shape == x.shape
         return {
             "mean": model_mean,
@@ -462,6 +460,11 @@ class GaussianDiffusion:
         if cond_fn is not None:
             out["mean"] = self.condition_mean(cond_fn, out, x, t, model_kwargs=model_kwargs)
         sample = out["mean"] + nonzero_mask * th.exp(0.5 * out["log_variance"]) * noise
+        
+        # print("mean: ", out["mean"][0,0,0,:10])
+        print("sample: ", sample[0,0,0,:10])
+
+        exit()
         return {"sample": sample, "pred_xstart": out["pred_xstart"]}
 
     def p_sample_loop(

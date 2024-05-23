@@ -159,10 +159,11 @@ def p_sample_loop(model_output, x, t, T, betas):
     if t==0:
         nonzero_mask = 0.
 
-    x_prev = mean_pred + nonzero_mask * th.exp(0.5 * var_pred) * noise
+    x_prev = mean_pred + nonzero_mask * th.exp(0.5 * model_log_variance) * noise
 
-    # print("model_variance: ", var_pred[0,0,0,:10])
-    print("mean_pred: ", mean_pred[0,0,0,:10])
+    print("x_prev: ", x_prev[0,0,0,:10])
+    #print("model_variance: ", var_pred[0,0,0,:10])
+    #print("mean_pred: ", mean_pred[0,0,0,:10])
     # print("min_log: ", min_log[0,0,0,0])
     # print("max_log: ", max_log[0,0,0,0])
     # print("betas: ", betas)
