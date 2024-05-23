@@ -105,7 +105,7 @@ def p_sample_loop(model_output, x, t, T, betas):
     noise_pred = model_output
     # mean_pred =  (x - (betas[t] * noise_pred / th.sqrt(1. - alpha_prod))) * 1 / th.sqrt(alphas[t])
 
-    x_start_pred = (a[-1]* x) - (b[-1]* noise_pred)
+    x_start_pred = (a[t]* x) - (b[t]* noise_pred)
     # print(x_start_pred[0,0,0,:2])
     # exit()
 
@@ -121,7 +121,9 @@ def p_sample_loop(model_output, x, t, T, betas):
     # print("coeff1:", coeff1)
     # print("coeff2:", coeff2)
 
-    mean_pred = coeff1[-1] * x_start_pred + coeff2[-1] * x
+    print("coeff select: ", coeff1[t])
+
+    mean_pred = coeff1[t] * x_start_pred + coeff2[t] * x
     
     # mean_pred = th.sqrt(alpha_prod_prev) * betas * x_start_pred / (1 - alpha_prod)
     # mean_pred += th.sqrt(alphas) * (1 - alpha_prod_prev) * x / (1 - alpha_prod) 
@@ -136,7 +138,7 @@ def p_sample_loop(model_output, x, t, T, betas):
     # The model_var_values is [-1, 1] for [min_var, max_var].
     frac = (model_var_values + 1) / 2
     model_log_variance = frac * max_log + (1 - frac) * min_log
-    var_pred = th.exp(model_log_variance)
+    # var_pred = th.exp(model_log_variance)
 
     noise = th.randn_like(x)
     nonzero_mask = 1.
@@ -145,10 +147,13 @@ def p_sample_loop(model_output, x, t, T, betas):
 
     x_prev = mean_pred + nonzero_mask * th.exp(0.5 * model_log_variance) * noise
 
-    print("x: ", x[0,0,0,:2])
-    print("x_prev: ", x_prev[0,0,0,:2])
-    #print("model_variance: ", var_pred[0,0,0,:2])
-    #print("mean_pred: ", mean_pred[0,0,0,:2])
+    # print("x: ", x[0,0,0,:2])
+    # print("x_prev: ", x_prev[0,0,0,:2])
+
+
+    print("mean_pred: ", mean_pred[0,0,0,:2])
+    print("log_variance: ", model_log_variance[0,0,0,:2])
+
     # print("min_log: ", min_log[0,0,0,0])
     # print("max_log: ", max_log[0,0,0,0])
     # print("betas: ", betas)
@@ -178,6 +183,7 @@ def inference(z,y):
     x = z
 
     for i in indices:
+        print(i)
         t = th.tensor([map_ts[i]] * x.shape[0], device="cpu") 
 
         model_output = model.forward_with_cfg(x, t, y, cfg_scale)
