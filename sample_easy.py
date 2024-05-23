@@ -52,36 +52,37 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
     return res + th.zeros(broadcast_shape, device=timesteps.device)
 
 def linear_beta_schedule(diffusion_timesteps):
-    scale = 1000 / diffusion_timesteps
+    scale = 1
     beta_start = scale * 0.0001
     beta_end = scale * 0.02
     return th.linspace(beta_start, beta_end, diffusion_timesteps) 
 
 
-def p_sample(model_output, x, t, T = 5):
+import numpy as np
+
+def p_sample(model_output, x, t, T):
+
     # safety checks
     B, C = x.shape[:2]
-    print("t: ", t.shape)
     print("B, C: ", B, C)
-    print("model_output.shape: ", model_output.shape)
 
-    assert t.shape == (B,)
+    # assert t.shape == (B,)
     assert model_output.shape == (B, C * 2, *x.shape[2:])
 
     model_output, model_var_values = th.split(model_output, C, dim=1)
-    print("model_output.shape: ", model_output.shape)
-    print("model_var_values.shape: ", model_var_values.shape)
 
-    betas = linear_beta_schedule(T)
+    betas = linear_beta_schedule(T+1)
     alphas = 1 - betas
     
     alpha_prod = th.cumprod(alphas, 0)
     alpha_prod_prev = th.cat([th.tensor([1.0]), alpha_prod[:-1]])
     posterior_var =  betas * (1. - alpha_prod_prev) / (1. - alpha_prod)
+
     # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
-    posterior_var = np.log(
-        np.append(posterior_var[1], posterior_var[1:])
-    ) if len(posterior_var) > 1 else np.array([])
+    if len(posterior_var) > 1:
+        posterior_var = th.log(th.cat([posterior_var[1].unsqueeze(0), posterior_var[1:]]))
+    else:
+        posterior_var = th.tensor([])
 
     # extract values for given timestep
     alpha_prod  = alphas[t]
@@ -94,29 +95,35 @@ def p_sample(model_output, x, t, T = 5):
 
     # var prediction
     # var_fixed = betas[t] * th.eye(x.size(0)) 
-    min_log = _extract_into_tensor(self.posterior_log_variance_clipped, t, x.shape)
-    max_log = _extract_into_tensor(np.log(self.betas), t, x.shape)
+    min_log = posterior_var[t]
+    max_log = th.log(betas[t])
+
     # The model_var_values is [-1, 1] for [min_var, max_var].
     frac = (model_var_values + 1) / 2
     model_log_variance = frac * max_log + (1 - frac) * min_log
     var_pred = th.exp(model_log_variance)
 
     x_prev = mean_pred + var_pred
-
     return x_prev 
 
 def inference(x):
+    z = th.randn(2,4,32,32)
+    n_sampling_steps = 5
+
     # start with pure noise
-    x = th.randn_like(z)
+    x = th.randn_like(z)  # Added batch dimension
     print("x: ", x.shape)
 
     # time indices in reverse
-    indices = list(range(n_sampling_steps))[::-1]
+    indices = list(range(1, n_sampling_steps + 1))[::-1]
 
     for i in indices:
-        t = th.tensor([i] * x.shape[0], device=device) 
-        model_output = model.forward_with_cfg(x, t, y, cfg_scale)
-        x = p_sample(model_output, x, t, n_sampling_steps)
+        t = th.tensor([i] * x.shape[0], device="cpu") 
+
+        # model_output = model.forward_with_cfg(x, t, y, cfg_scale)
+        model_output = th.randn(2,8,32,32)
+
+        x = p_sample(model_output, x, i, n_sampling_steps) 
     return x
 
 samples = inference(z)
