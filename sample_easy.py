@@ -80,8 +80,9 @@ def p_sample_loop(model_output, x, t, T, betas):
 
     # assert t.shape == (B,)
     assert model_output.shape == (B, C * 2, *x.shape[2:])
-
     model_output, model_var_values = th.split(model_output, C, dim=1)
+    # print("model_output: ", model_output[0,0,0,:10])
+    # print("model_var_values: ", model_var_values[0,0,0,:10])
 
     # betas = linear_beta_schedule(T)
     alphas = 1 - betas
@@ -105,25 +106,40 @@ def p_sample_loop(model_output, x, t, T, betas):
     noise_pred = model_output
     mean_pred =  (x - (betas[t] * noise_pred / th.sqrt(1. - alpha_prod))) * 1 / th.sqrt(alphas[t])
 
+    # mean_pred = th.sqrt(alpha_prod_prev) * betas[t] * x_start / (1 - alpha_prod) * x
+    # mean_pred += th.sqrt(alpha_prod) * (1 - alpha_prod_prev) / (1 - alpha_prod) * x
+
     # var prediction
-    # var_fixed = betas[t] * th.eye(x.size(0)) 
     min_log = posterior_var[t]
     max_log = th.log(betas[t])
+
+    min_log = th.full_like(x, min_log)
+    max_log = th.full_like(x, max_log)
 
     # The model_var_values is [-1, 1] for [min_var, max_var].
     frac = (model_var_values + 1) / 2
     model_log_variance = frac * max_log + (1 - frac) * min_log
     var_pred = th.exp(model_log_variance)
 
-    # print("model_variance: ", var_pred.shape)
-    print("min_log: ", min_log.shape)
-    print("max_log: ", max_log.shape)
-    # print("model_output: ", model_output.shape)
-    # print("model_var_values: ", model_var_values)
+    noise = th.randn_like(x)
 
-    print("betas: ", betas)
+    # nonzero_mask = ((t != 0).float().view(-1, *([1] * (len(x.shape) - 1))))
 
-    x_prev = mean_pred + var_pred
+    nonzero_mask = 1.
+    if t==0:
+        nonzero_mask = 0.
+
+    x_prev = mean_pred + nonzero_mask * th.exp(0.5 * var_pred) * noise
+
+    # print("model_variance: ", var_pred[0,0,0,:10])
+    print("mean_pred: ", mean_pred[0,0,0,:10])
+    # print("min_log: ", min_log[0,0,0,0])
+    # print("max_log: ", max_log[0,0,0,0])
+    # print("betas: ", betas)
+
+    # exit()
+
+    # x_prev = mean_pred + var_pred
     return x_prev 
 
 def inference(x,y):
