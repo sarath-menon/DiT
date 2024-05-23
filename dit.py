@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from dataclasses import dataclass
 import math
 import numpy as np
+from download import find_model
 
 @dataclass
 class DiTConfig:
@@ -25,7 +26,6 @@ class DiTConfig:
 
 def pair(t):
     return t if isinstance(t, tuple) else (t, t)
-
 
 def modulate(x, shift, scale):
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
@@ -332,3 +332,45 @@ class DiT(nn.Module):
         half_eps = uncond_eps + cfg_scale * (cond_eps - uncond_eps)
         eps = torch.cat([half_eps, half_eps], dim=0)
         return torch.cat([eps, rest], dim=1)
+
+def load_pretrained_model(model, ckpt_path = "DiT-XL-2-256x256.pt"):
+    
+    state_dict = model.state_dict()
+
+    # Auto-download a pre-trained model or load a custom DiT checkpoint 
+    pretrained_state_dict = find_model(ckpt_path)
+
+    # Define a mapping from old keys to new keys
+    key_mapping = {}
+    for key in pretrained_state_dict.keys():
+        if ".adaLN_modulation.1.weight" in key:
+            new_key = key.replace(".adaLN_modulation.1.weight", ".adaLN_modulation.linear.weight")
+            key_mapping[key] = new_key
+        elif ".adaLN_modulation.1.bias" in key:
+            new_key = key.replace(".adaLN_modulation.1.bias", ".adaLN_modulation.linear.bias")
+            key_mapping[key] = new_key
+        elif "y_embedder" in key:
+            new_key = key.replace("y_embedder", "label_embedder")
+            key_mapping[key] = new_key
+        elif "x_embedder" in key:
+            new_key = key.replace("x_embedder", "patch_embedder")
+            key_mapping[key] = new_key
+        elif "t_embedder" in key:
+            new_key = key.replace("t_embedder", "timestep_embedder")
+            key_mapping[key] = new_key
+
+    # Load state dict layer by layer:
+    for name, param in pretrained_state_dict.items():
+        # Map the state_dict name to the model's state_dict name if necessary
+        mapped_name = key_mapping.get(name, name)
+        if mapped_name in state_dict:
+            try:
+                state_dict[mapped_name].copy_(param)
+                # print(f"Layer {mapped_name} loaded successfully")
+            except Exception as e:
+                print(f"Failed to load {mapped_name}. Reason: {e}")
+        else:
+            print(f"{mapped_name} not found in the model's state_dict")
+
+    print("Model loaded")
+    return model
