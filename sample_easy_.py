@@ -67,7 +67,17 @@ class GaussianDiffusionParams:
         else:
             self.posterior_var = th.tensor([], device=self.device)
 
- 
+def respace_betas(gd, use_timesteps):
+    last_alpha_cumprod = 1.0
+    new_betas = []
+    timestep_map = []
+    for i, alpha_cumprod in enumerate(gd.alpha_prod):
+        if i in use_timesteps:
+            new_betas.append(1 - alpha_cumprod / last_alpha_cumprod)
+            last_alpha_cumprod = alpha_cumprod
+            timestep_map.append(i)
+    return th.tensor(new_betas), timestep_map
+    
 @th.no_grad()
 def p_sample_loop(model_output, x, t, gd):
     # safety checks
@@ -102,7 +112,13 @@ def inference(x,y):
     indices = list(range(spaced_diffusion.num_timesteps))[::-1]
     indices = tqdm(indices)
     map_ts = th.tensor([  0, 250, 500, 749, 999])
-    gd = GaussianDiffusionParams(th.from_numpy(spaced_diffusion.betas).float().to(device), device)
+
+    # gd = GaussianDiffusionParams(th.from_numpy(spaced_diffusion.betas).float().to(device), device)
+
+    betas = linear_beta_schedule(diffusion_steps)
+    gd = GaussianDiffusionParams(betas, device)
+    betas, _ = respace_betas(gd, map_ts)
+    gd = GaussianDiffusionParams(betas, device)
 
     for i in indices:
         t = th.tensor([map_ts[i]] * x.shape[0], device="cpu") 
