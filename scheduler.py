@@ -9,8 +9,8 @@ class GaussianDiffusion:
         self.device = device
 
         self.betas = self.linear_beta_schedule(diffusion_steps).float().to(device)
-        self.map_ts = self.space_timesteps(diffusion_steps, [n_sampling_steps])
-        self.betas, _ = self.respace_betas(self.betas, self.map_ts)
+        self.sampling_ts = self.get_sampling_ts_from_diffusion_ts()
+        self.betas, _ = self.get_sampling_schedule()
         
         self.alphas = 1. - self.betas
         self.alpha_prod = th.cumprod(self.alphas, 0)
@@ -36,9 +36,11 @@ class GaussianDiffusion:
     #     return th.clip(betas, 0.0001, 0.9999)
 
 
-    def space_timesteps(self, num_timesteps, section_counts):
-        size_per = num_timesteps // len(section_counts)
-        extra = num_timesteps % len(section_counts)
+    # get evenly spaced time steps for the sampling schedule
+    def get_sampling_ts_from_diffusion_ts(self):
+        section_counts = [self.n_sampling_steps]
+        size_per = self.diffusion_steps // len(section_counts)
+        extra = self.diffusion_steps % len(section_counts)
         start_idx = 0
         all_steps = []
         for i, section_count in enumerate(section_counts):
@@ -51,14 +53,15 @@ class GaussianDiffusion:
             start_idx += size
         return all_steps
 
-    def respace_betas(self, betas, use_timesteps):
+   
+    def get_sampling_schedule(self):
         last_alpha_prod = 1.0
-        alphas = 1. - betas
+        alphas = 1. - self.betas
         alpha_prod = th.cumprod(alphas, 0)
         new_betas = []
         timestep_map = []
         for i, alpha_prod in enumerate(alpha_prod):
-            if i in use_timesteps:
+            if i in self.sampling_ts:
                 new_betas.append(1 - alpha_prod / last_alpha_prod)
                 last_alpha_prod = alpha_prod
                 timestep_map.append(i)
