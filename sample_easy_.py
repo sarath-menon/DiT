@@ -13,6 +13,7 @@ from diffusion.respace import SpacedDiffusion, space_timesteps
 import diffusion.gaussian_diffusion as gd
 from tqdm.auto import tqdm
 import numpy as np
+from dataclasses import dataclass
 
 th.manual_seed(1)
 device = "cuda" if th.cuda.is_available() else "cpu"
@@ -51,21 +52,24 @@ model_mean_type=gd.ModelMeanType.EPSILON,
 model_var_type=gd.ModelVarType.LEARNED_RANGE,
 loss_type = gd.LossType.MSE)
 
-betas = th.from_numpy(spaced_diffusion.betas).float().to(device)
-alphas = 1. - betas
-alpha_prod = th.cumprod(alphas, 0)
-alpha_prod_prev = th.cat([th.tensor([1.0]), alpha_prod[:-1]])
-posterior_var =  betas * (1. - alpha_prod_prev) / (1. - alpha_prod)
-
-# log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
-if len(posterior_var) > 1:
-    posterior_var = th.log(th.cat([posterior_var[1].unsqueeze(0), posterior_var[1:]]))
-else:
-    posterior_var = th.tensor([])
+@dataclass
+class GaussianDiffusionParams:
+    betas: th.Tensor
+    device: str
+    def __post_init__(self):
+        self.betas = self.betas.float().to(self.device)
+        self.alphas = 1. - self.betas
+        self.alpha_prod = th.cumprod(self.alphas, 0)
+        self.alpha_prod_prev = th.cat([th.tensor([1.0], device=self.device), self.alpha_prod[:-1]])
+        self.posterior_var = self.betas * (1. - self.alpha_prod_prev) / (1. - self.alpha_prod)
+        if len(self.posterior_var) > 1:
+            self.posterior_var = th.log(th.cat([self.posterior_var[1].unsqueeze(0), self.posterior_var[1:]]))
+        else:
+            self.posterior_var = th.tensor([], device=self.device)
 
  
 @th.no_grad()
-def p_sample_loop(model_output, x, t):
+def p_sample_loop(model_output, x, t, gd):
     # safety checks
     B, C = x.shape[:2]
     assert model_output.shape == (B, C * 2, *x.shape[2:])
@@ -74,13 +78,13 @@ def p_sample_loop(model_output, x, t):
     noise_pred, model_var_values = th.split(model_output, C, dim=1)
    
     # mean prediction
-    coeff1 = th.sqrt(1./alphas) 
-    coeff2 = betas * th.sqrt(1./alphas) * th.sqrt(1./(1-alpha_prod))
+    coeff1 = th.sqrt(1./gd.alphas) 
+    coeff2 = gd.betas * th.sqrt(1./gd.alphas) * th.sqrt(1./(1-gd.alpha_prod))
     mean_pred = coeff1[t] * x - coeff2[t] * noise_pred
 
     # var prediction
-    min_log = th.full_like(x, posterior_var[t])
-    max_log = th.full_like(x, th.log(betas[t]))
+    min_log = th.full_like(x, gd.posterior_var[t])
+    max_log = th.full_like(x, th.log(gd.betas[t]))
     frac = (model_var_values + 1) / 2
     model_log_var = frac * max_log + (1 - frac) * min_log
     std_dev_pred = th.exp(0.5 * model_log_var)
@@ -98,12 +102,13 @@ def inference(x,y):
     indices = list(range(spaced_diffusion.num_timesteps))[::-1]
     indices = tqdm(indices)
     map_ts = th.tensor([  0, 250, 500, 749, 999])
+    gd = GaussianDiffusionParams(th.from_numpy(spaced_diffusion.betas).float().to(device), device)
 
     for i in indices:
         t = th.tensor([map_ts[i]] * x.shape[0], device="cpu") 
         model_output = model.forward_with_cfg(x, t, y, cfg_scale)
 
-        x = p_sample_loop(model_output, x,  i) 
+        x = p_sample_loop(model_output, x,  i, gd) 
     return x
 
  # Convert image class to noise latent:
