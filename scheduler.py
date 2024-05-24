@@ -1,4 +1,3 @@
-
 import torch as th
 th.backends.cuda.matmul.allow_tf32 = True
 th.backends.cudnn.allow_tf32 = True
@@ -27,6 +26,14 @@ class GaussianDiffusion:
         beta_start = scale * 0.0001
         beta_end = scale * 0.02
         return th.linspace(beta_start, beta_end, diffusion_timesteps) 
+    
+    # def cosine_beta_schedule(self, timesteps, s=0.008):
+    #     steps = timesteps + 1
+    #     x = th.linspace(0, timesteps, steps)
+    #     alphas_cumprod = th.cos(((x / timesteps) + s) / (1 + s) * th.pi * 0.5) ** 2
+    #     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+    #     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    #     return th.clip(betas, 0.0001, 0.9999)
 
 
     def space_timesteps(self, num_timesteps, section_counts):
