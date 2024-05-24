@@ -12,6 +12,7 @@ from diffusion.respace import  space_timesteps
 from diffusion.respace import SpacedDiffusion, space_timesteps
 import diffusion.gaussian_diffusion as gd
 from tqdm.auto import tqdm
+import numpy as np
 
 th.manual_seed(1)
 device = "cuda" if th.cuda.is_available() else "cpu"
@@ -47,10 +48,28 @@ def linear_beta_schedule(diffusion_timesteps):
     return th.linspace(beta_start, beta_end, diffusion_timesteps) 
 
 
-import numpy as np
 
+betas = linear_beta_schedule_np(diffusion_steps)
+spaced_diffusion = SpacedDiffusion(
+use_timesteps=space_timesteps(diffusion_steps,[n_sampling_steps]),
+betas=betas,
+model_mean_type=gd.ModelMeanType.EPSILON,
+model_var_type=gd.ModelVarType.LEARNED_RANGE,
+loss_type = gd.LossType.MSE)
+
+betas = th.from_numpy(spaced_diffusion.betas).float().to(device)
+alphas = 1. - betas
+alpha_prod = th.cumprod(alphas, 0)
+alpha_prod_prev = th.cat([th.tensor([1.0]), alpha_prod[:-1]])
+posterior_var =  betas * (1. - alpha_prod_prev) / (1. - alpha_prod)
+if len(posterior_var) > 1:
+    posterior_var = th.log(th.cat([posterior_var[1].unsqueeze(0), posterior_var[1:]]))
+else:
+    posterior_var = th.tensor([])
+
+ 
 @th.no_grad()
-def p_sample_loop(model_output, x, t, T, betas):
+def p_sample_loop(model_output, x, t, betas):
 
     betas = th.from_numpy(betas).float().to(device)
     # safety checks
@@ -59,19 +78,9 @@ def p_sample_loop(model_output, x, t, T, betas):
     # assert t.shape == (B,)
     assert model_output.shape == (B, C * 2, *x.shape[2:])
     model_output, model_var_values = th.split(model_output, C, dim=1)
-    alphas = 1. - betas
-    
-    alpha_prod = th.cumprod(alphas, 0)
-    alpha_prod_prev = th.cat([th.tensor([1.0]), alpha_prod[:-1]])
-    posterior_var =  betas * (1. - alpha_prod_prev) / (1. - alpha_prod)
-
    
     # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
-    if len(posterior_var) > 1:
-        posterior_var = th.log(th.cat([posterior_var[1].unsqueeze(0), posterior_var[1:]]))
-    else:
-        posterior_var = th.tensor([])
-    
+    print("posterior_var: ", posterior_var.shape)
     # mean prediction  
     noise_pred = model_output
 
@@ -102,15 +111,6 @@ def p_sample_loop(model_output, x, t, T, betas):
 
 def inference(z,y):
 
-    betas = linear_beta_schedule_np(diffusion_steps)
-
-    spaced_diffusion = SpacedDiffusion(
-    use_timesteps=space_timesteps(diffusion_steps,[n_sampling_steps]),
-    betas=betas,
-    model_mean_type=gd.ModelMeanType.EPSILON,
-    model_var_type=gd.ModelVarType.LEARNED_RANGE,
-    loss_type = gd.LossType.MSE)
-
     # time indices in reverse
     indices = list(range(spaced_diffusion.num_timesteps))[::-1]
     indices = tqdm(indices)
@@ -119,11 +119,14 @@ def inference(z,y):
 
     x = z
 
+    print("Old betas: ", betas)
+    print("New betas: ", spaced_diffusion.betas)
+
     for i in indices:
         t = th.tensor([map_ts[i]] * x.shape[0], device="cpu") 
         model_output = model.forward_with_cfg(x, t, y, cfg_scale)
 
-        x = p_sample_loop(model_output, x,  i, spaced_diffusion.num_timesteps, spaced_diffusion.betas) 
+        x = p_sample_loop(model_output, x,  i, spaced_diffusion.betas) 
     return x
 
 
