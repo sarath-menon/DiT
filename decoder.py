@@ -7,13 +7,13 @@ import math
 from dataclasses import dataclass
 
 @dataclass
-class DecoderConfig:
+class AttnConfig:
     n_heads: int = 1
     n_embed: int = 1
     dropout: float = 0.0
     device: str = 'cpu'
 
-class CausalSelfAttention(nn.Module):
+class AcausalSelfAttention(nn.Module):
     def __init__(self, cfg):
         super().__init__()
 
@@ -59,8 +59,8 @@ class AttentionBlock(nn.Module):
         super().__init__()
         self.groupnorm = nn.GroupNorm(32, channels)
         # self.attention = SelfAttention(1, channels)
-        decoder_config = DecoderConfig(n_heads=1, n_embed=channels)
-        self.attention = CausalSelfAttention(decoder_config)
+        attn_config = AttnConfig(n_heads=1, n_embed=channels)
+        self.attention = AcausalSelfAttention(attn_config)
     
     def forward(self, x):
         residue = x
