@@ -18,7 +18,7 @@ th.manual_seed(1)
 device = "cuda" if th.cuda.is_available() else "cpu"
 
 diffusion_steps = 1000
-n_sampling_steps = 10
+n_sampling_steps = 5
 cfg_scale = 4.0
 class_labels = [11] # Labels to condition the model with (feel free to change):
 
@@ -37,17 +37,11 @@ def linear_beta_schedule_np(num_diffusion_timesteps):
     beta_end = scale * 0.02
     return np.linspace(beta_start, beta_end, num_diffusion_timesteps) 
 
-n_sampling_steps = 5
-diffusion_steps=1000
-
-
 def linear_beta_schedule(diffusion_timesteps):
     scale = 1
     beta_start = scale * 0.0001
     beta_end = scale * 0.02
     return th.linspace(beta_start, beta_end, diffusion_timesteps) 
-
-
 
 betas = linear_beta_schedule_np(diffusion_steps)
 spaced_diffusion = SpacedDiffusion(
@@ -62,6 +56,8 @@ alphas = 1. - betas
 alpha_prod = th.cumprod(alphas, 0)
 alpha_prod_prev = th.cat([th.tensor([1.0]), alpha_prod[:-1]])
 posterior_var =  betas * (1. - alpha_prod_prev) / (1. - alpha_prod)
+
+# log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
 if len(posterior_var) > 1:
     posterior_var = th.log(th.cat([posterior_var[1].unsqueeze(0), posterior_var[1:]]))
 else:
@@ -69,66 +65,46 @@ else:
 
  
 @th.no_grad()
-def p_sample_loop(model_output, x, t, betas):
-
-    betas = th.from_numpy(betas).float().to(device)
+def p_sample_loop(model_output, x, t):
     # safety checks
     B, C = x.shape[:2]
-
-    # assert t.shape == (B,)
     assert model_output.shape == (B, C * 2, *x.shape[2:])
-    model_output, model_var_values = th.split(model_output, C, dim=1)
-   
-    # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
-    print("posterior_var: ", posterior_var.shape)
-    # mean prediction  
-    noise_pred = model_output
 
-    # Eqn in paper (working)
+    # get model output
+    noise_pred, model_var_values = th.split(model_output, C, dim=1)
+   
+    # mean prediction
     coeff1 = th.sqrt(1./alphas) 
     coeff2 = betas * th.sqrt(1./alphas) * th.sqrt(1./(1-alpha_prod))
     mean_pred = coeff1[t] * x - coeff2[t] * noise_pred
 
     # var prediction
-    min_log = posterior_var[t]
-    max_log = th.log(betas[t])
-
-    min_log = th.full_like(x, min_log)
-    max_log = th.full_like(x, max_log)
-
-    # The model_var_values is [-1, 1] for [min_var, max_var].
+    min_log = th.full_like(x, posterior_var[t])
+    max_log = th.full_like(x, th.log(betas[t]))
     frac = (model_var_values + 1) / 2
-    model_log_variance = frac * max_log + (1 - frac) * min_log
-    std_dev_pred = th.exp(0.5 * model_log_variance)
+    model_log_var = frac * max_log + (1 - frac) * min_log
+    std_dev_pred = th.exp(0.5 * model_log_var)
 
+    # inference
+    nonzero_mask = 0. if t == 0 else 1.; 
     noise = th.randn_like(x)
-    nonzero_mask = 1.
-    if t==0:
-        nonzero_mask = 0.
-
     x_prev = mean_pred + nonzero_mask * std_dev_pred * noise
+
     return x_prev 
 
-def inference(z,y):
+def inference(x,y):
 
     # time indices in reverse
     indices = list(range(spaced_diffusion.num_timesteps))[::-1]
     indices = tqdm(indices)
-
     map_ts = th.tensor([  0, 250, 500, 749, 999])
-
-    x = z
-
-    print("Old betas: ", betas)
-    print("New betas: ", spaced_diffusion.betas)
 
     for i in indices:
         t = th.tensor([map_ts[i]] * x.shape[0], device="cpu") 
         model_output = model.forward_with_cfg(x, t, y, cfg_scale)
 
-        x = p_sample_loop(model_output, x,  i, spaced_diffusion.betas) 
+        x = p_sample_loop(model_output, x,  i) 
     return x
-
 
  # Convert image class to noise latent:
 latent_size = dit_cfg.input_size
@@ -140,8 +116,6 @@ y = th.tensor(class_labels, device=device)
 z = th.cat([z, z], 0)
 y_null = th.tensor([1000] * n, device=device)
 y = th.cat([y, y_null], 0)
-
-# print("z: ", z[0,0,:10])
 
 samples = inference(z,y)
 
