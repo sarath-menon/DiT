@@ -10,6 +10,7 @@ import numpy as np
 from tqdm.auto import tqdm
 import numpy as np
 from scheduler import GaussianDiffusion 
+from decoder import StableDiffusionDecoder
 
 th.manual_seed(1)
 device = "cuda" if th.cuda.is_available() else "cpu"
@@ -70,6 +71,7 @@ model.eval()
 
 # diffusion = create_diffusion(str(n_sampling_steps))
 vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-mse").to(device)
+# decoder = StableDiffusionDecoder()
 
  # Convert image class to noise latent:
 latent_size = dit_cfg.input_size
@@ -86,7 +88,10 @@ samples = inference(z,y)
 
 # convert image latent to image
 samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
+samples = decoder(samples)
 samples = vae.decode(samples / 0.18215).sample
+# print(samples.shape)
+
 
 # Save and display images:
 path = os.getcwd()
