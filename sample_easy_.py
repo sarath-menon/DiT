@@ -4,13 +4,9 @@ th.backends.cudnn.allow_tf32 = True
 from torchvision.utils import save_image
 from download import find_model
 from dit import DiT, DiTConfig, load_pretrained_model
-# from diffusion import create_diffusion
 from diffusers.models import AutoencoderKL
 import os
 import numpy as np
-from diffusion.respace import  space_timesteps
-from diffusion.respace import SpacedDiffusion, space_timesteps
-import diffusion.gaussian_diffusion as gd
 from tqdm.auto import tqdm
 import numpy as np
 from dataclasses import dataclass
@@ -21,7 +17,7 @@ device = "cuda" if th.cuda.is_available() else "cpu"
 diffusion_steps = 1000
 n_sampling_steps = 5
 cfg_scale = 4.0
-class_labels = [11] # Labels to condition the model with (feel free to change):
+class_labels = [11] # Labels to condition the model with (feel free to change)
 
 # setup diffusion transformer
 dit_cfg = DiTConfig()
@@ -32,25 +28,11 @@ model.eval()
 # diffusion = create_diffusion(str(n_sampling_steps))
 vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-mse").to(device)
 
-def linear_beta_schedule_np(num_diffusion_timesteps):
-    scale = 1000.0  / num_diffusion_timesteps 
-    beta_start = scale * 0.0001
-    beta_end = scale * 0.02
-    return np.linspace(beta_start, beta_end, num_diffusion_timesteps) 
-
 def linear_beta_schedule(diffusion_timesteps):
     scale = 1
     beta_start = scale * 0.0001
     beta_end = scale * 0.02
     return th.linspace(beta_start, beta_end, diffusion_timesteps) 
-
-betas = linear_beta_schedule_np(diffusion_steps)
-spaced_diffusion = SpacedDiffusion(
-use_timesteps=space_timesteps(diffusion_steps,[n_sampling_steps]),
-betas=betas,
-model_mean_type=gd.ModelMeanType.EPSILON,
-model_var_type=gd.ModelVarType.LEARNED_RANGE,
-loss_type = gd.LossType.MSE)
 
 @dataclass
 class GaussianDiffusionParams:
@@ -67,17 +49,19 @@ class GaussianDiffusionParams:
         else:
             self.posterior_var = th.tensor([], device=self.device)
 
-def respace_betas(gd, use_timesteps):
-    last_alpha_cumprod = 1.0
+def respace_betas(betas, use_timesteps):
+    last_alpha_prod = 1.0
+    alphas = 1. - betas
+    alpha_prod = th.cumprod(alphas, 0)
     new_betas = []
     timestep_map = []
-    for i, alpha_cumprod in enumerate(gd.alpha_prod):
+    for i, alpha_prod in enumerate(alpha_prod):
         if i in use_timesteps:
-            new_betas.append(1 - alpha_cumprod / last_alpha_cumprod)
-            last_alpha_cumprod = alpha_cumprod
+            new_betas.append(1 - alpha_prod / last_alpha_prod)
+            last_alpha_prod = alpha_prod
             timestep_map.append(i)
     return th.tensor(new_betas), timestep_map
-    
+
 @th.no_grad()
 def p_sample_loop(model_output, x, t, gd):
     # safety checks
@@ -108,16 +92,13 @@ def p_sample_loop(model_output, x, t, gd):
 
 def inference(x,y):
 
-    # time indices in reverse
-    indices = list(range(spaced_diffusion.num_timesteps))[::-1]
-    indices = tqdm(indices)
+    # create params for gaussian diffusion
+    indices = list(range(n_sampling_steps))[::-1]
+    indices = tqdm(indices) # for progres bar
     map_ts = th.tensor([  0, 250, 500, 749, 999])
 
-    # gd = GaussianDiffusionParams(th.from_numpy(spaced_diffusion.betas).float().to(device), device)
-
     betas = linear_beta_schedule(diffusion_steps)
-    gd = GaussianDiffusionParams(betas, device)
-    betas, _ = respace_betas(gd, map_ts)
+    betas, _ = respace_betas(betas, map_ts)
     gd = GaussianDiffusionParams(betas, device)
 
     for i in indices:
