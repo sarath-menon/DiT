@@ -56,7 +56,7 @@ def inference(x,y):
     gd = GaussianDiffusion(diffusion_steps, n_sampling_steps, device=device)
 
     for i in indices:
-        t = th.tensor([gd.map_ts[i]] * x.shape[0], device=device) 
+        t = th.tensor([gd.sampling_ts[i]] * x.shape[0], device=device) 
         model_output = model.forward_with_cfg(x, t, y, cfg_scale)
 
         x = p_sample_loop(model_output, x,  i, gd) 
