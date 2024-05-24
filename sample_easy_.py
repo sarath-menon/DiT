@@ -26,19 +26,10 @@ class_labels = [11] # Labels to condition the model with (feel free to change):
 dit_cfg = DiTConfig()
 model = DiT(dit_cfg)
 model = load_pretrained_model(model)
-model.eval()  # important!
-
+model.eval()  
 
 # diffusion = create_diffusion(str(n_sampling_steps))
 vae = AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-mse").to(device)
-
-
-# model_kwargs = dict(y=y, cfg_scale=cfg_scale)
-
-# # Sample image:
-# samples = diffusion.p_sample_loop_loop(
-#     model.forward_with_cfg, z.shape, z, clip_denoised=False, model_kwargs=model_kwargs, progress=True, device=device
-# )
 
 def linear_beta_schedule_np(num_diffusion_timesteps):
     scale = 1000.0  / num_diffusion_timesteps 
@@ -48,9 +39,6 @@ def linear_beta_schedule_np(num_diffusion_timesteps):
 
 n_sampling_steps = 5
 diffusion_steps=1000
-betas = linear_beta_schedule_np(diffusion_steps)
-
-
 
 posterior_var = []
 
@@ -73,17 +61,14 @@ import numpy as np
 def p_sample_loop(model_output, x, t, T, betas):
 
     betas = th.from_numpy(betas).float().to(device)
-
     # safety checks
     B, C = x.shape[:2]
-    # print("B, C: ", B, C)
 
     # assert t.shape == (B,)
     assert model_output.shape == (B, C * 2, *x.shape[2:])
     model_output, model_var_values = th.split(model_output, C, dim=1)
     print("model_output: ", model_output[0,0,0,:2])
     # print("model_var_values: ", model_var_values[0,0,0,:2])
-
 
     # betas = linear_beta_schedule(T)
     alphas = 1. - betas
@@ -92,8 +77,7 @@ def p_sample_loop(model_output, x, t, T, betas):
     alpha_prod_prev = th.cat([th.tensor([1.0]), alpha_prod[:-1]])
     posterior_var =  betas * (1. - alpha_prod_prev) / (1. - alpha_prod)
 
-    a = th.sqrt(1. / alpha_prod)
-    b = th.sqrt(1. / alpha_prod - 1)
+   
    
     # below: log calculation clipped because the posterior variance is 0 at the beginning of the diffusion chain
     if len(posterior_var) > 1:
@@ -103,30 +87,20 @@ def p_sample_loop(model_output, x, t, T, betas):
     
     # mean prediction  
     noise_pred = model_output
-    # mean_pred =  (x - (betas[t] * noise_pred / th.sqrt(1. - alpha_prod))) * 1 / th.sqrt(alphas[t])
 
+    a = th.sqrt(1. / alpha_prod)
+    b = th.sqrt(1. / alpha_prod - 1)
     x_start_pred = (a[t]* x) - (b[t]* noise_pred)
-    # print(x_start_pred[0,0,0,:2])
-    # exit()
-
-    # print("x: ", x[0,0,0,:2])
-    # print("noise_pred: ", noise_pred[0,0,0,:2])
-
-    # print("betas shape:", betas.shape)
-    coeff1 = th.sqrt(alpha_prod_prev) * betas
     
     coeff1 = th.sqrt(alpha_prod_prev) * betas  / (1 - alpha_prod)
     coeff2 = th.sqrt(alphas) * (1 - alpha_prod_prev)  / (1 - alpha_prod) 
-
-    # print("coeff1:", coeff1)
-    # print("coeff2:", coeff2)
-
-    print("coeff select: ", coeff1[t])
-
     mean_pred = coeff1[t] * x_start_pred + coeff2[t] * x
-    
-    # mean_pred = th.sqrt(alpha_prod_prev) * betas * x_start_pred / (1 - alpha_prod)
-    # mean_pred += th.sqrt(alphas) * (1 - alpha_prod_prev) * x / (1 - alpha_prod) 
+
+
+    # coeff1 = th.sqrt(1./alphas) 
+    # coeff2 = betas * th.sqrt(1./alphas) * th.sqrt(1./1-alpha_prod) 
+    # mean_pred = coeff1[t] * x + coeff2[t] * noise_pred
+
 
     # var prediction
     min_log = posterior_var[t]
@@ -138,14 +112,14 @@ def p_sample_loop(model_output, x, t, T, betas):
     # The model_var_values is [-1, 1] for [min_var, max_var].
     frac = (model_var_values + 1) / 2
     model_log_variance = frac * max_log + (1 - frac) * min_log
-    # var_pred = th.exp(model_log_variance)
+    std_dev_pred = th.exp(0.5 * model_log_variance)
 
     noise = th.randn_like(x)
     nonzero_mask = 1.
     if t==0:
         nonzero_mask = 0.
 
-    x_prev = mean_pred + nonzero_mask * th.exp(0.5 * model_log_variance) * noise
+    x_prev = mean_pred + nonzero_mask * std_dev_pred * noise
 
     # print("x: ", x[0,0,0,:2])
     # print("x_prev: ", x_prev[0,0,0,:2])
