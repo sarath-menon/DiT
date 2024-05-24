@@ -92,15 +92,14 @@ def p_sample_loop(model_output, x, t, T, betas):
     b = th.sqrt(1. / alpha_prod - 1)
     x_start_pred = (a[t]* x) - (b[t]* noise_pred)
     
-    coeff1 = th.sqrt(alpha_prod_prev) * betas  / (1 - alpha_prod)
-    coeff2 = th.sqrt(alphas) * (1 - alpha_prod_prev)  / (1 - alpha_prod) 
-    mean_pred = coeff1[t] * x_start_pred + coeff2[t] * x
+    # coeff1 = th.sqrt(alpha_prod_prev) * betas  / (1 - alpha_prod)
+    # coeff2 = th.sqrt(alphas) * (1 - alpha_prod_prev)  / (1 - alpha_prod) 
+    # mean_pred = coeff1[t] * x_start_pred + coeff2[t] * x
 
 
-    # coeff1 = th.sqrt(1./alphas) 
-    # coeff2 = betas * th.sqrt(1./alphas) * th.sqrt(1./1-alpha_prod) 
-    # mean_pred = coeff1[t] * x + coeff2[t] * noise_pred
-
+    coeff1 = th.sqrt(1./alphas) 
+    coeff2 = betas * th.sqrt(1./alphas) * th.sqrt(1./1-alpha_prod) 
+    mean_pred = coeff1[t] * x - coeff2[t] * noise_pred
 
     # var prediction
     min_log = posterior_var[t]
