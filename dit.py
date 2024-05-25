@@ -131,7 +131,7 @@ class PatchEmbed(nn.Module):
 class AcausalSelfAttention(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        assert cfg.input_size % cfg.n_heads == 0, "input_size must be divisible by n_heads"
+        assert cfg.n_embed % cfg.n_heads == 0, "embedding dim must be divisible by n_heads"
 
         self.n_heads, self.n_embed = cfg.n_heads, cfg.n_embed
         self.head_size = self.n_embed // self.n_heads
@@ -278,7 +278,7 @@ class DiT(nn.Module):
 
         # position embedding
         pos_embed = nn.Parameter(torch.randn(1, num_patches, cfg.n_embed) * .02)
-        print("self.pos_embed:", pos_embed.shape)
+        print("Num patches", num_patches)
 
         pos_embed_tensor = get_2d_sincos_pos_embed(pos_embed.shape[-1], int(num_patches ** 0.5))
         self.pos_embed = nn.Parameter(pos_embed_tensor.float().unsqueeze(0))  # Convert to float, add batch dimension, and wrap in nn.Parameter
