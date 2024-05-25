@@ -277,8 +277,11 @@ class DiT(nn.Module):
         num_patches = (image_height // patch_height) * (image_width // patch_width)
 
         # position embedding
-        self.pos_embed = nn.Parameter(torch.randn(1, num_patches, cfg.n_embed) * .02)
-        pos_embed_np = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(num_patches ** 0.5))
+        pos_embed = nn.Parameter(torch.randn(1, num_patches, cfg.n_embed) * .02)
+        print("self.pos_embed:", pos_embed.shape)
+
+        pos_embed_tensor = get_2d_sincos_pos_embed(pos_embed.shape[-1], int(num_patches ** 0.5))
+        self.pos_embed = nn.Parameter(pos_embed_tensor.float())  # Convert to float and wrap in nn.Parameter
 
         self.blocks = nn.ModuleList([
              *[Block(cfg) for _ in range(cfg.n_layers)]
