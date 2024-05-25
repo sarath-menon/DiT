@@ -35,7 +35,7 @@ train_cfg = TrainConfig()
 device = "cuda" if th.cuda.is_available() else "cpu"
 
 # setup diffusion transformer
-dit_cfg = DiTConfig()
+dit_cfg = DiTConfig(input_size=4,n_heads=4, n_layers=3)
 model = DiT(dit_cfg)
 model = DiT(dit_cfg)
 model.train()  # important! 
@@ -64,29 +64,25 @@ def p_loss(model, x_start, t, y):
 
     # draw a sample
     noise = th.randn_like(x) #ground truth noise
+    a = th.sqrt(gd.alpha_prod)[t].reshape(32,1,1,1)
+    b = th.sqrt(1- gd.alpha_prod)[t].reshape(32,1,1,1)
 
-    print("x:", x_start.shape)
-    print("t:", t.shape)
-    print("y:", y.shape)
-    print(gd.alpha_prod.shape)
-
-    x_t = th.sqrt(gd.alpha_prod)[t]*x_start + th.sqrt(gd.alpha_prod)[t]*noise
+    x_t = a*x_start + b*noise
     B, C = x_t.shape[:2]
 
     # get predicted noise
     model_output = model(x, t, y)
     noise_pred, model_var_values = th.split(model_output, C, dim=1)
-
     return th.nn.functional.mse_loss(noise, noise_pred)
 
 for epoch in range(train_cfg.num_epochs):
     for x, y in trainloader:
-        x = x.to(device)
+        x = x.to(device) 
         y = y.to(device)
 
         with th.no_grad():
             # Map input images to latent space and normalize latents:
-            x = vae.encode(x).latent_dist.sample().mul_(train_cfg.vae_normlizing_const)
+            x = vae.encode(x).latent_dist.sample().mul_(train_cfg.vae_normlizing_const) 
 
         # Generate random timesteps for each image latent
         t = th.randint(0, train_cfg.diffusion_steps, (train_cfg.batch_size,), device=device)
@@ -95,6 +91,8 @@ for epoch in range(train_cfg.num_epochs):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
+        exit()
 
 
 model.eval() # do any sampling/FID calculation/etc. with ema (or model) in eval mode ...
