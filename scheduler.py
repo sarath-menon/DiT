@@ -16,8 +16,9 @@ class GaussianDiffusion:
             
         self.alphas = 1. - self.betas
         self.alpha_prod = th.cumprod(self.alphas, 0)
-        self.alpha_prod_prev = th.cat([th.tensor([1.0], device=self.device), self.alpha_prod[:-1]])
+        self.alpha_prod_prev = th.cat([th.tensor([1.0]), self.alpha_prod[:-1].to(self.device)])
         self.posterior_var = self.betas * (1. - self.alpha_prod_prev) / (1. - self.alpha_prod)
+
         if len(self.posterior_var) > 1:
             self.posterior_var = th.log(th.cat([self.posterior_var[1].unsqueeze(0), self.posterior_var[1:]]))
         else:
