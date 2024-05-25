@@ -54,7 +54,7 @@ def inference(x,y):
     indices = list(range(n_sampling_steps))[::-1]
     indices = tqdm(indices) # for progres bar
    
-    gd = GaussianDiffusion(diffusion_steps, n_sampling_steps, device=device)
+    gd = GaussianDiffusion(diffusion_steps, n_sampling_steps, sampling=True, device=device)
 
     for i in indices:
         t = th.tensor([gd.sampling_ts[i]] * x.shape[0], device=device) 
@@ -88,7 +88,7 @@ samples = inference(z,y)
 
 # convert image latent to image
 samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
-samples = decoder(samples)
+# samples = decoder(samples)
 samples = vae.decode(samples / 0.18215).sample
 # print(samples.shape)
 

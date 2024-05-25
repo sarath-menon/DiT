@@ -3,15 +3,17 @@ th.backends.cuda.matmul.allow_tf32 = True
 th.backends.cudnn.allow_tf32 = True
 
 class GaussianDiffusion:
-    def __init__(self, diffusion_steps, n_sampling_steps, device='cpu'):
+    def __init__(self, diffusion_steps, n_sampling_steps, sampling=False, device='cpu'):
         self.diffusion_steps = diffusion_steps
         self.n_sampling_steps = n_sampling_steps
         self.device = device
 
         self.betas = self.linear_beta_schedule(diffusion_steps).float().to(device)
-        self.sampling_ts = self.get_sampling_ts_from_diffusion_ts()
-        self.betas, _ = self.get_sampling_schedule()
-        
+
+        if sampling:
+            self.sampling_ts = self.get_sampling_ts_from_diffusion_ts()
+            self.betas, _ = self.get_sampling_schedule()
+            
         self.alphas = 1. - self.betas
         self.alpha_prod = th.cumprod(self.alphas, 0)
         self.alpha_prod_prev = th.cat([th.tensor([1.0], device=self.device), self.alpha_prod[:-1]])
