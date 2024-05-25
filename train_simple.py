@@ -35,13 +35,11 @@ train_cfg = TrainConfig()
 device = "cuda" if th.cuda.is_available() else "cpu"
 
 # setup diffusion transformer
-dit_cfg = DiTConfig(input_size=train_cfg.image_size,n_heads=4, n_layers=3, in_chans=1, patch_size=28)
+dit_cfg = DiTConfig(input_size=train_cfg.image_size,n_heads=4, n_layers=3, in_chans=1, patch_size=14)
 model = DiT(dit_cfg)
 model = DiT(dit_cfg)
 model.train()  # important! 
 
-# Note that parameter initialization is done within the DiT constructor
-vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
 
 gd = GaussianDiffusion(train_cfg.diffusion_steps, train_cfg.n_sampling_steps, device=device)
 
