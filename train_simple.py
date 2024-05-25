@@ -21,7 +21,7 @@ class TrainConfig:
     image_size: int = 28 # cifar10
     num_epochs: int = 10000
     eval_iters: int = 200
-    eval_interval: int = 500
+    eval_interval: int = 100
     batch_size: int = 32 
     diffusion_steps = 300
     n_sampling_steps = 5
@@ -35,7 +35,7 @@ train_cfg = TrainConfig()
 device = "cuda" if th.cuda.is_available() else "cpu"
 
 # setup diffusion transformer
-dit_cfg = DiTConfig(input_size=train_cfg.image_size,n_heads=4, n_layers=3, in_chans=1, patch_size=14)
+dit_cfg = DiTConfig(input_size=train_cfg.image_size,n_heads=4, n_layers=3, in_chans=1, patch_size=28)
 model = DiT(dit_cfg)
 model = DiT(dit_cfg)
 model.train()  # important! 
@@ -77,11 +77,9 @@ def p_loss(model, x_start, t, y):
     return th.nn.functional.mse_loss(noise, noise_pred)
 
 for epoch in range(train_cfg.num_epochs):
-
-    # if epoch % train_cfg.eval_interval == 0:
-    #     estimated_loss = estimate_loss()
-    #     print(f"Estimated Loss at epoch {epoch}: {estimated_loss}")
     running_loss = 0.0
+    print("Starting epoch")
+
     for i, (x, y) in enumerate(trainloader):
         x = x.to(device) 
         y = y.to(device)
@@ -100,11 +98,9 @@ for epoch in range(train_cfg.num_epochs):
 
          # print statistics
         running_loss += loss.item()
-        if i % 10 == 0:    
-            print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 10:.3f}')
+        if i!=0 and i % train_cfg.eval_interval == 0:    
+            print(f'[{epoch + 1}, {i + 1:5d}] runnning loss: {running_loss / train_cfg.eval_interval:.3f}')
             running_loss = 0.0
-
-        if i % 100 == 0:
             th.save(model.state_dict(), 'weights/dit_weights.pth')
 
 model.eval() # do any sampling/FID calculation/etc. with ema (or model) in eval mode ...
