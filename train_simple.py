@@ -23,9 +23,9 @@ class TrainConfig:
     eval_iters: int = 200
     eval_interval: int = 500
     batch_size: int = 32 
-    diffusion_steps = 1000
+    diffusion_steps = 300
     n_sampling_steps = 5
-    lr: float = 1e-4
+    lr: float = 1e-3
     vae_normlizing_const: float = 0.18215 # for stable diffusion vae
 
     def __post_init__(self):
@@ -35,7 +35,7 @@ train_cfg = TrainConfig()
 device = "cuda" if th.cuda.is_available() else "cpu"
 
 # setup diffusion transformer
-dit_cfg = DiTConfig(input_size=4,n_heads=4, n_layers=3)
+dit_cfg = DiTConfig(input_size=32,n_heads=4, n_layers=3, in_chans=3)
 model = DiT(dit_cfg)
 model = DiT(dit_cfg)
 model.train()  # important! 
@@ -88,9 +88,9 @@ for epoch in range(train_cfg.num_epochs):
         x = x.to(device) 
         y = y.to(device)
 
-        with th.no_grad():
-            # Map input images to latent space and normalize latents:
-            x = vae.encode(x).latent_dist.sample().mul_(train_cfg.vae_normlizing_const) 
+        # with th.no_grad():
+        #     # Map input images to latent space and normalize latents:
+        #     x = vae.encode(x).latent_dist.sample().mul_(train_cfg.vae_normlizing_const) 
 
         # Generate random timesteps for each image latent
         t = th.randint(0, train_cfg.diffusion_steps, (train_cfg.batch_size,), device=device)
@@ -102,10 +102,12 @@ for epoch in range(train_cfg.num_epochs):
 
          # print statistics
         running_loss += loss.item()
-        print("Iter {} Loss: {}".format(i, loss.item()))
-        # if i % train_cfg.eval_interval == 0:    # print every 2000 mini-batches
-        #     print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}')
-        #     running_loss = 0.0
+        if i % 10 == 0:    
+            print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 10:.3f}')
+            running_loss = 0.0
+
+        if i % 100 == 0:
+            th.save(model.state_dict(), 'weights/dit_weights.pth')
 
 model.eval() # do any sampling/FID calculation/etc. with ema (or model) in eval mode ...
 
