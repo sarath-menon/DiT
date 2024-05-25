@@ -22,21 +22,18 @@ class TrainConfig:
     num_epochs: int = 10000
     eval_iters: int = 200
     eval_interval: int = 100
-    batch_size: int = 32 
+    batch_size: int = 128
     diffusion_steps = 300
     n_sampling_steps = 300
     lr: float = 1e-3
-    vae_normlizing_const: float = 0.18215 # for stable diffusion vae
-
-    # def __post_init__(self):
-    #     assert self.image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
 
 train_cfg = TrainConfig()
 device = "cuda" if th.cuda.is_available() else "cpu"
+# device = "mps" if th.backends.mps.is_available() else "cpu"
+print("Using device", device)
 
 # setup diffusion transformer
-dit_cfg = DiTConfig(input_size=train_cfg.image_size,n_heads=4, n_layers=3, in_chans=1, patch_size=14)
-model = DiT(dit_cfg)
+dit_cfg = DiTConfig(input_size=train_cfg.image_size,n_heads=4, n_layers=3, in_chans=1, patch_size=14, device=device)
 model = DiT(dit_cfg)
 model.train()  # important! 
 
@@ -47,6 +44,7 @@ gd = GaussianDiffusion(train_cfg.diffusion_steps, train_cfg.n_sampling_steps, de
 optimizer = th.optim.AdamW(model.parameters(), lr=train_cfg.lr)
 
 transform = transforms.Compose([
+    transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.5], std=[0.5], inplace=True)
 ])
@@ -55,21 +53,20 @@ train_dataset  = datasets.FashionMNIST(root='./dataset', train=True, download=Tr
 trainloader = th.utils.data.DataLoader(train_dataset, batch_size=train_cfg.batch_size,shuffle=True)
 
 def p_loss(model, x_start, t, y):
-
     B = x_start.size(0)
+
     # draw a sample
     noise = th.randn_like(x) #ground truth noise
     a = th.sqrt(gd.alpha_prod)[t].reshape(B,1,1,1)
     b = th.sqrt(1- gd.alpha_prod)[t].reshape(B,1,1,1)
-
     x_t = a*x_start + b*noise
-    B, C = x_t.shape[:2]
-
+    
     # get predicted noise
-    model_output = model(x, t, y)
+    B, C = x_t.shape[:2]
+    model_output = model(x_t, t, y)
     assert model_output.shape == (B, C * 2, *x_t.shape[2:])
-
     noise_pred, model_var_values = th.split(model_output, C, dim=1)
+
     return th.nn.functional.mse_loss(noise, noise_pred)
 
 for epoch in range(train_cfg.num_epochs):
@@ -85,7 +82,7 @@ for epoch in range(train_cfg.num_epochs):
         #     x = vae.encode(x).latent_dist.sample().mul_(train_cfg.vae_normlizing_const) 
 
         # Generate random timesteps for each image latent
-        t = th.randint(0, train_cfg.diffusion_steps, (train_cfg.batch_size,), device=device)
+        t = th.randint(0, train_cfg.diffusion_steps, (x.size(0),), device=device)
 
         loss = p_loss(model, x, t, y)        
         optimizer.zero_grad()
