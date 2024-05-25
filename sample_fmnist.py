@@ -21,6 +21,7 @@ n_sampling_steps = 300
 diffusion_steps = 300
 cfg_scale = 4.0
 class_labels = [0] # Labels to condition the model with (feel free to change)
+save_interval = 50
 
 @th.no_grad()
 def p_sample_loop(model_output, x, t, gd):
@@ -53,12 +54,16 @@ def inference(x,y):
     indices = tqdm(indices) # for progres bar
    
     gd = GaussianDiffusion(diffusion_steps, n_sampling_steps, sampling=False, device=device)
+    x_hist = []
 
     for i in indices:
         t = th.tensor([i] * x.shape[0], device=device) 
         model_output = model.forward_with_cfg(x, t, y, cfg_scale)
         x = p_sample_loop(model_output, x,  i, gd) 
-    return x
+
+        if i % save_interval == 0:
+            x_hist.append(x)
+    return x, x_hist
 
 # setup diffusion transformer
 dit_cfg = DiTConfig(input_size=input_size,n_heads=4, n_layers=3, in_chans=1, patch_size=patch_size)
@@ -77,15 +82,20 @@ z = th.cat([z, z], 0)
 y_null = th.tensor([1000] * n, device=device)
 y = th.cat([y, y_null], 0)
 
-samples = inference(z,y)
-# convert image latent to image
-samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
+samples, x_hist = inference(z,y)
 
-# invert the normalization
-samples = (samples * 0.5) + 0.5
+# plotting and saving the images
+for i, x in enumerate(x_hist):
+    # convert image latent to image
+    x, _ = x.chunk(2, dim=0)  # Remove null class samples
+    x= (x * 0.5) + 0.5 # # invert the normalization
+    x_hist[i] = x.squeeze().cpu().numpy() 
 
-# Save and display images:
-path = os.getcwd()
-output_dir = os.path.join(path, "out")
-save_image(samples, os.path.join(output_dir, "sample_fmnist.png"), nrow=1, normalize=True, value_range=(-1, 1))
+fig, axes = plt.subplots(1, len(x_hist), figsize=(len(x_hist) * 2, 2))
+for ax, img in zip(axes, x_hist):
+    ax.imshow(img, cmap='gray')
+    ax.axis('off')
 
+plt.subplots_adjust(wspace=0.05, hspace=0)
+plt.savefig(os.path.join(os.getcwd(), "out", "sample_fmnist"), bbox_inches='tight')
+plt.close()
