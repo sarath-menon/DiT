@@ -15,8 +15,10 @@ from decoder import StableDiffusionDecoder
 th.manual_seed(1)
 device = "cuda" if th.cuda.is_available() else "cpu"
 
+input_size = 28
+patch_size = 14
 diffusion_steps = 300
-n_sampling_steps = 300
+n_sampling_steps = 100
 cfg_scale = 4.0
 class_labels = [11] # Labels to condition the model with (feel free to change)
 
@@ -64,7 +66,7 @@ def inference(x,y):
     return x
 
 # setup diffusion transformer
-dit_cfg = DiTConfig(input_size=28,n_heads=4, n_layers=3, in_chans=1, patch_size=28)
+dit_cfg = DiTConfig(input_size=input_size,n_heads=4, n_layers=3, in_chans=1, patch_size=patch_size)
 model = DiT(dit_cfg)
 model.load_state_dict(th.load("weights/dit_weights.pth"))
 model.eval()  
@@ -84,7 +86,9 @@ samples = inference(z,y)
 
 # convert image latent to image
 samples, _ = samples.chunk(2, dim=0)  # Remove null class samples
-# samples = decoder(samples)
+
+# invert the normalization
+samples = (samples * 0.5) + 0.5
 
 # Save and display images:
 path = os.getcwd()

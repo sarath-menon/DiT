@@ -24,7 +24,7 @@ class TrainConfig:
     eval_interval: int = 100
     batch_size: int = 32 
     diffusion_steps = 300
-    n_sampling_steps = 5
+    n_sampling_steps = 300
     lr: float = 1e-3
     vae_normlizing_const: float = 0.18215 # for stable diffusion vae
 
@@ -41,7 +41,7 @@ model = DiT(dit_cfg)
 model.train()  # important! 
 
 
-gd = GaussianDiffusion(train_cfg.diffusion_steps, train_cfg.n_sampling_steps, device=device)
+gd = GaussianDiffusion(train_cfg.diffusion_steps, train_cfg.n_sampling_steps, device=device, sampling=True)
 
 # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
 optimizer = th.optim.AdamW(model.parameters(), lr=train_cfg.lr)
