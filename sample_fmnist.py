@@ -36,17 +36,13 @@ def p_sample_loop(model_output, x, t, gd):
     coeff2 = gd.betas * th.sqrt(1./gd.alphas) * th.sqrt(1./(1-gd.alpha_prod))
     mean_pred = coeff1[t] * x - coeff2[t] * noise_pred
 
-    # var prediction
-    min_log = th.full_like(x, gd.posterior_var[t])
-    max_log = th.full_like(x, th.log(gd.betas[t]))
-    frac = (model_var_values + 1) / 2
-    model_log_var = frac * max_log + (1 - frac) * min_log
-    std_dev_pred = th.exp(0.5 * model_log_var)
+    # fix var = beta_t
+    std_dev_pred = th.sqrt(gd.posterior_var[t])
 
     # inference
     nonzero_mask = 0. if t == 0 else 1.; 
     noise = th.randn_like(x)
-    x_prev = mean_pred + nonzero_mask * std_dev_pred * noise
+    x_prev = mean_pred +  std_dev_pred * noise
 
     return x_prev 
 
