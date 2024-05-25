@@ -1,6 +1,6 @@
 import torch as th
-th.backends.cuda.matmul.allow_tf32 = True
-th.backends.cudnn.allow_tf32 = True
+# th.backends.cuda.matmul.allow_tf32 = True
+# th.backends.cudnn.allow_tf32 = True
 from torchvision.utils import save_image
 from download import find_model
 from dit import DiT, DiTConfig, load_pretrained_model
@@ -35,7 +35,7 @@ def p_sample_loop(model_output, x, t, gd):
     mean_pred = coeff1[t] * x - coeff2[t] * noise_pred
 
     # var prediction
-    min_log = th.full_like(x, gd.posterior_var[t])
+    min_log = th.full_like(x, gd.posterior_log_var[t])
     max_log = th.full_like(x, th.log(gd.betas[t]))
     frac = (model_var_values + 1) / 2
     model_log_var = frac * max_log + (1 - frac) * min_log

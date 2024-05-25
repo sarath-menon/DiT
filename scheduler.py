@@ -20,9 +20,9 @@ class GaussianDiffusion:
         self.posterior_var = self.betas * (1. - self.alpha_prod_prev) / (1. - self.alpha_prod)
 
         if len(self.posterior_var) > 1:
-            self.posterior_var = th.log(th.cat([self.posterior_var[1].unsqueeze(0), self.posterior_var[1:]]))
+            self.posterior_log_var = th.log(th.cat([self.posterior_var[1].unsqueeze(0), self.posterior_var[1:]]))
         else:
-            self.posterior_var = th.tensor([], device=self.device)
+            self.posterior_log_var = th.tensor([], device=self.device)
     
     def linear_beta_schedule(self, diffusion_timesteps):
         scale = 1
