@@ -18,8 +18,8 @@ device = "cuda" if th.cuda.is_available() else "cpu"
 input_size = 28
 patch_size = 14
 n_sampling_steps = 300
-cfg_scale = 4.0
 diffusion_steps = 300
+cfg_scale = 4.0
 class_labels = [0] # Labels to condition the model with (feel free to change)
 
 @th.no_grad()
@@ -37,7 +37,7 @@ def p_sample_loop(model_output, x, t, gd):
     mean_pred = coeff1[t] * x - coeff2[t] * noise_pred
 
     # fix var = beta_t
-    std_dev_fixed = gd.posterior_var[t]
+    std_dev_fixed = th.sqrt(gd.posterior_var[t])
 
     # inference
     nonzero_mask = 0. if t == 0 else 1.; 
