@@ -281,7 +281,7 @@ class DiT(nn.Module):
         print("self.pos_embed:", pos_embed.shape)
 
         pos_embed_tensor = get_2d_sincos_pos_embed(pos_embed.shape[-1], int(num_patches ** 0.5))
-        self.pos_embed = nn.Parameter(pos_embed_tensor.float())  # Convert to float and wrap in nn.Parameter
+        self.pos_embed = nn.Parameter(pos_embed_tensor.float().unsqueeze(0))  # Convert to float, add batch dimension, and wrap in nn.Parameter
 
         self.blocks = nn.ModuleList([
              *[Block(cfg) for _ in range(cfg.n_layers)]
