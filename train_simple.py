@@ -62,21 +62,29 @@ trainloader = th.utils.data.DataLoader(train_dataset, batch_size=train_cfg.batch
 
 def p_loss(model, x_start, t, y):
 
+    B = x_start.size(0)
     # draw a sample
     noise = th.randn_like(x) #ground truth noise
-    a = th.sqrt(gd.alpha_prod)[t].reshape(32,1,1,1)
-    b = th.sqrt(1- gd.alpha_prod)[t].reshape(32,1,1,1)
+    a = th.sqrt(gd.alpha_prod)[t].reshape(B,1,1,1)
+    b = th.sqrt(1- gd.alpha_prod)[t].reshape(B,1,1,1)
 
     x_t = a*x_start + b*noise
     B, C = x_t.shape[:2]
 
     # get predicted noise
     model_output = model(x, t, y)
+    assert model_output.shape == (B, C * 2, *x_t.shape[2:])
+
     noise_pred, model_var_values = th.split(model_output, C, dim=1)
     return th.nn.functional.mse_loss(noise, noise_pred)
 
 for epoch in range(train_cfg.num_epochs):
-    for x, y in trainloader:
+
+    # if epoch % train_cfg.eval_interval == 0:
+    #     estimated_loss = estimate_loss()
+    #     print(f"Estimated Loss at epoch {epoch}: {estimated_loss}")
+    running_loss = 0.0
+    for i, (x, y) in enumerate(trainloader):
         x = x.to(device) 
         y = y.to(device)
 
@@ -92,8 +100,12 @@ for epoch in range(train_cfg.num_epochs):
         loss.backward()
         optimizer.step()
 
-        exit()
-
+         # print statistics
+        running_loss += loss.item()
+        print("Iter {} Loss: {}".format(i, loss.item()))
+        # if i % train_cfg.eval_interval == 0:    # print every 2000 mini-batches
+        #     print(f'[{epoch + 1}, {i + 1:5d}] loss: {running_loss / 2000:.3f}')
+        #     running_loss = 0.0
 
 model.eval() # do any sampling/FID calculation/etc. with ema (or model) in eval mode ...
 
