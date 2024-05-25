@@ -13,6 +13,7 @@ import os
 from diffusers.models import AutoencoderKL
 from dataclasses import dataclass
 from dit import DiT, DiTConfig,load_pretrained_model
+from scheduler import GaussianDiffusion 
 th.manual_seed(42)
 
 @dataclass
@@ -42,6 +43,9 @@ model.train()  # important!
 # Note that parameter initialization is done within the DiT constructor
 vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
 
+gd = GaussianDiffusion(train_cfg.diffusion_steps, train_cfg.n_sampling_steps, device=device)
+
+
 # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
 optimizer = th.optim.AdamW(model.parameters(), lr=train_cfg.lr)
 
@@ -56,6 +60,24 @@ transform = transforms.Compose([
 train_dataset  = datasets.CIFAR10(root='./dataset', train=True, download=True, transform=transform)
 trainloader = th.utils.data.DataLoader(train_dataset, batch_size=train_cfg.batch_size,shuffle=True)
 
+def p_loss(model, x_start, t, y):
+
+    # draw a sample
+    noise = th.randn_like(x) #ground truth noise
+
+    print("x:", x_start.shape)
+    print("t:", t.shape)
+    print("y:", y.shape)
+    print(gd.alpha_prod.shape)
+
+    x_t = th.sqrt(gd.alpha_prod)[t]*x_start + th.sqrt(gd.alpha_prod)[t]*noise
+    B, C = x_t.shape[:2]
+
+    # get predicted noise
+    model_output = model(x, t, y)
+    noise_pred, model_var_values = th.split(model_output, C, dim=1)
+
+    return th.nn.functional.mse_loss(noise, noise_pred)
 
 for epoch in range(train_cfg.num_epochs):
     for x, y in trainloader:
@@ -69,14 +91,10 @@ for epoch in range(train_cfg.num_epochs):
         # Generate random timesteps for each image latent
         t = th.randint(0, train_cfg.diffusion_steps, (train_cfg.batch_size,), device=device)
 
-        print(t.shape)
-
-        # loss_dict = diffusion.training_losses(model, x, t, model_kwargs)
-        # loss = loss_dict["loss"].mean()
-        
-        # optimizer.zero_grad()
-        # loss.backward()
-        # optimizer.step()
+        loss = p_loss(model, x, t, y)        
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
 
 model.eval() # do any sampling/FID calculation/etc. with ema (or model) in eval mode ...
