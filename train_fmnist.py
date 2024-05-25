@@ -47,8 +47,6 @@ gd = GaussianDiffusion(train_cfg.diffusion_steps, train_cfg.n_sampling_steps, de
 optimizer = th.optim.AdamW(model.parameters(), lr=train_cfg.lr)
 
 transform = transforms.Compose([
-    transforms.CenterCrop(train_cfg.image_size),
-    transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.5], std=[0.5], inplace=True)
 ])
