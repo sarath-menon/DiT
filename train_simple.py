@@ -18,7 +18,7 @@ th.manual_seed(42)
 
 @dataclass
 class TrainConfig:
-    image_size: int = 32 # cifar10
+    image_size: int = 28 # cifar10
     num_epochs: int = 10000
     eval_iters: int = 200
     eval_interval: int = 500
@@ -28,14 +28,14 @@ class TrainConfig:
     lr: float = 1e-3
     vae_normlizing_const: float = 0.18215 # for stable diffusion vae
 
-    def __post_init__(self):
-        assert self.image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
+    # def __post_init__(self):
+    #     assert self.image_size % 8 == 0, "Image size must be divisible by 8 (for the VAE encoder)."
 
 train_cfg = TrainConfig()
 device = "cuda" if th.cuda.is_available() else "cpu"
 
 # setup diffusion transformer
-dit_cfg = DiTConfig(input_size=32,n_heads=4, n_layers=3, in_chans=3)
+dit_cfg = DiTConfig(input_size=train_cfg.image_size,n_heads=4, n_layers=3, in_chans=1, patch_size=14)
 model = DiT(dit_cfg)
 model = DiT(dit_cfg)
 model.train()  # important! 
@@ -45,19 +45,17 @@ vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(device)
 
 gd = GaussianDiffusion(train_cfg.diffusion_steps, train_cfg.n_sampling_steps, device=device)
 
-
 # Setup optimizer (we used default Adam betas=(0.9, 0.999) and a constant learning rate of 1e-4 in our paper):
 optimizer = th.optim.AdamW(model.parameters(), lr=train_cfg.lr)
 
-# Setup data:
 transform = transforms.Compose([
     transforms.CenterCrop(train_cfg.image_size),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True)
+    transforms.Normalize(mean=[0.5], std=[0.5], inplace=True)
 ])
 
-train_dataset  = datasets.CIFAR10(root='./dataset', train=True, download=True, transform=transform)
+train_dataset  = datasets.FashionMNIST(root='./dataset', train=True, download=True, transform=transform)
 trainloader = th.utils.data.DataLoader(train_dataset, batch_size=train_cfg.batch_size,shuffle=True)
 
 def p_loss(model, x_start, t, y):
