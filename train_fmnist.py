@@ -19,7 +19,7 @@ th.manual_seed(42)
 @dataclass
 class TrainConfig:
     image_size: int = 28 # cifar10
-    num_epochs: int = 10000
+    num_epochs: int = 3
     eval_iters: int = 200
     eval_interval: int = 100
     batch_size: int = 128
