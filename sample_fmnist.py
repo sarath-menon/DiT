@@ -41,6 +41,7 @@ def p_sample_loop(model_output, x, t, gd):
     std_dev_fixed = th.sqrt(gd.posterior_var[t])
 
     # inference
+    noise = th.randn_like(x)
     x_prev = mean_pred +  std_dev_fixed * noise
 
     return x_prev 
